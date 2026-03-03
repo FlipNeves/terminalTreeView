@@ -10,9 +10,9 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md) [432b67e]
 
 ## Phase 2: TreeView Implementation
-- [ ] Task: Directory Tree Component
-    - [ ] Write Tests: Verify the tree component correctly lists the contents of a sample directory.
-    - [ ] Implement: Integrate Textual's 'DirectoryTree' widget and customize its behavior to meet project requirements.
+- [x] Task: Directory Tree Component [7ac09e3]
+    - [x] Write Tests: Verify the tree component correctly lists the contents of a sample directory.
+    - [x] Implement: Create custom Rich-based navigator that lists directories.
 - [ ] Task: Visual Styling (Icons and Colors)
     - [ ] Write Tests: Verify icons and colors are correctly applied to different file types.
     - [ ] Implement: Customize the 'DirectoryTree' styling to use Rich for icons and specific colors for files and folders.
