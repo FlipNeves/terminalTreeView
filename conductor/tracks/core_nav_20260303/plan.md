@@ -4,7 +4,7 @@
 - [x] Task: Project Scaffolding [cefa14e]
     - [ ] Create 'pyproject.toml' or 'requirements.txt' with dependencies (textual, rich, pytest).
     - [ ] Set up basic project structure ('src/', 'tests/').
-- [ ] Task: Basic TUI Application
+- [x] Task: Basic TUI Application [c9fff79]
     - [ ] Write Tests: Verify a minimal Textual app can start.
     - [ ] Implement: Create a basic Textual 'App' class that displays a 'Hello World' message.
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md)
