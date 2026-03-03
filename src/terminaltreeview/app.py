@@ -42,7 +42,17 @@ class DirectoryNavigator:
                     self.selected_index = (self.selected_index - 1) % len(self.items)
                 elif key == readchar.key.DOWN:
                     self.selected_index = (self.selected_index + 1) % len(self.items)
-                elif key == readchar.key.ENTER:
+                elif key in (readchar.key.ENTER, readchar.key.RIGHT):
+                    selected = self.items[self.selected_index]
+                    self.root_dir = os.path.abspath(os.path.join(self.root_dir, selected))
+                    self._refresh_items()
+                    self.selected_index = 0
+                elif key == readchar.key.LEFT:
+                    self.root_dir = os.path.abspath(os.path.join(self.root_dir, ".."))
+                    self._refresh_items()
+                    self.selected_index = 0
+                elif key in ('\x0a', '\x0d\x0a'): # Common CTRL+ENTER or alternative ENTER representations
+                    # In many terminals, CTRL+ENTER sends LF (\n) while ENTER sends CR (\r)
                     selected = self.items[self.selected_index]
                     return os.path.abspath(os.path.join(self.root_dir, selected))
                 elif key in ('q', readchar.key.CTRL_C):

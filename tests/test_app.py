@@ -46,28 +46,43 @@ def test_navigator_selection_path(tmp_path):
     (tmp_path / "target_dir").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     
-    # items = ['..', 'target_dir'] (alphabetical order of dirs)
+    # items = ['..', 'target_dir']
     nav.selected_index = 1
-    
     selected_item = nav.items[nav.selected_index]
     result_path = os.path.abspath(os.path.join(nav.root_dir, selected_item))
-    
     assert result_path == str((tmp_path / "target_dir").resolve())
 
-def test_navigator_run_exit_with_path(tmp_path, monkeypatch):
-    """Verify that run() returns path on ENTER."""
+def test_navigator_navigation(tmp_path, monkeypatch):
+    """Verify ENTER moves into a directory."""
     (tmp_path / "subdir").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     
-    # Mock readchar.readkey to return ENTER immediately
-    # Default selected_index is 0 ('..')
-    monkeypatch.setattr("readchar.readkey", lambda: readchar.key.ENTER)
+    # Force select 'subdir'
+    nav.selected_index = 1
     
-    # We also need to mock Live because it tries to use terminal features
-    # but for this logic test we just want to see if the loop exits with the right path
+    # Mock readchar to return ENTER, then 'q' to exit loop
+    # Wait, nav.run() has a loop that only exits on specific keys.
+    # We need to mock a sequence of keys.
+    keys = iter([readchar.key.ENTER, 'q'])
+    monkeypatch.setattr("readchar.readkey", lambda: next(keys))
+    
+    # Since Live rendering is complex in tests, we might want to mock it 
+    # but the logic itself is what we want to test.
+    result = nav.run()
+    
+    assert result is None # Exited with 'q'
+    assert nav.root_dir == os.path.abspath(os.path.join(tmp_path, "subdir"))
+
+def test_navigator_select_and_exit(tmp_path, monkeypatch):
+    """Verify CTRL+ENTER exits with path."""
+    (tmp_path / "subdir").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    
+    # Highlight 'subdir'
+    nav.selected_index = 1
+    
+    # Mock readchar to return CTRL+ENTER (\x0a)
+    monkeypatch.setattr("readchar.readkey", lambda: '\x0a')
     
     result = nav.run()
-    # os.path.join(tmp_path, "..") resolved. 
-    # Since tmp_path is a subdir of a tmp root, its parent is the tmp root.
-    expected = os.path.abspath(os.path.join(str(tmp_path), ".."))
-    assert result == expected
+    assert result == os.path.abspath(os.path.join(tmp_path, "subdir"))
