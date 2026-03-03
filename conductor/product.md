@@ -11,7 +11,7 @@ Terminal TreeView Navigator is a terminal-based solution designed for power user
 
 ## Core Features
 - **Interactive Keyboard Navigation:** Effortless directory traversal using arrow keys. Use UP/DOWN to navigate, ENTER or RIGHT to enter a folder, and LEFT to go up a level.
-- **Fast Selection:** Use CTRL+ENTER to select the currently highlighted directory and instantly change the shell's current working directory.
+- **Fast Selection:** Use CTRL+ENTER to select the currently highlighted directory and instantly change the shell's current working directory. Highlight ".." and press CTRL+ENTER to select and exit to the folder you are currently viewing.
 - **Detailed Metadata Visualization:** Rich display of file and directory information, including sizes and permissions, integrated directly into the tree view.
 - **Dynamic 'CD' Integration:** When a user selects and 'Enters' a directory, the tool automatically transitions the shell's current working directory to that location, bridging the gap between visualization and navigation.
 

@@ -59,10 +59,11 @@ def test_navigator_navigation(tmp_path, monkeypatch):
     assert result is None
     assert nav.root_dir == os.path.abspath(os.path.join(tmp_path, "subdir"))
 
-def test_navigator_select_and_exit(tmp_path, monkeypatch):
-    """Verify CTRL+ENTER exits with path."""
+def test_navigator_select_and_exit_on_subdir(tmp_path, monkeypatch):
+    """Verify CTRL+ENTER exits with path of highlighted subdir."""
     (tmp_path / "subdir").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
+    # items = ['..', 'subdir']
     nav.selected_index = 1
     
     # Mock msvcrt.getch to return CTRL+ENTER (\x0a)
@@ -70,3 +71,17 @@ def test_navigator_select_and_exit(tmp_path, monkeypatch):
     
     result = nav.run()
     assert result == os.path.abspath(os.path.join(tmp_path, "subdir"))
+
+def test_navigator_select_and_exit_on_parent_item(tmp_path, monkeypatch):
+    """Verify CTRL+ENTER on '..' exits with CURRENT root_dir (new behavior)."""
+    (tmp_path / "subdir").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    # items = ['..', 'subdir']
+    nav.selected_index = 0 # Highlight '..'
+    
+    # Mock msvcrt.getch to return CTRL+ENTER (\x0a)
+    monkeypatch.setattr("msvcrt.getch", lambda: b'\x0a')
+    
+    result = nav.run()
+    # Should return tmp_path (current view), NOT the parent of tmp_path
+    assert result == os.path.abspath(tmp_path)

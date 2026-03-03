@@ -87,6 +87,8 @@ class DirectoryNavigator:
                 # Clear before exit so it doesn't leave junk in the terminal
                 self.clear_previous_render()
                 selected = self.items[self.selected_index]
+                if selected == "..":
+                    return self.root_dir
                 return os.path.abspath(os.path.join(self.root_dir, selected))
             elif key in ('quit', 'ctrl_c'):
                 self.clear_previous_render()
