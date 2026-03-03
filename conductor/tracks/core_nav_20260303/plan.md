@@ -9,14 +9,14 @@
     - [x] Implement: Create a minimalist Rich-based selection navigator.
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md) [432b67e]
 
-## Phase 2: TreeView Implementation
+## Phase 2: TreeView Implementation [checkpoint: 6eee268]
 - [x] Task: Directory Tree Component [7ac09e3]
     - [x] Write Tests: Verify the tree component correctly lists the contents of a sample directory.
     - [x] Implement: Create custom Rich-based navigator that lists directories.
 - [x] Task: Visual Styling (Icons and Colors) [debc60f]
     - [x] Write Tests: Verify icons and colors are correctly applied to different file types.
     - [x] Implement: Add icons and colors for directories and navigation.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: TreeView Implementation' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: TreeView Implementation' (Protocol in workflow.md) [6eee268]
 
 ## Phase 3: Directory Traversal and Path Selection
 - [ ] Task: Selection Logic
