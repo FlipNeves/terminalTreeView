@@ -1,5 +1,5 @@
 function Invoke-Ttv {
-    $path = python src/terminaltreeview/app.py
+    $path = python C:\Users\PC\source\person_repos\terminalTreeView\src\terminaltreeview\app.py
     if ($path -and (Test-Path $path)) {
         Set-Location $path
     }
