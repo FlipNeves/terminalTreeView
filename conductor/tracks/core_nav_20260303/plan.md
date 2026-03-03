@@ -1,7 +1,7 @@
 # Implementation Plan: Core Interactive TreeView and 'CD' Shell Integration
 
 ## Phase 1: Project Setup and Skeleton
-- [ ] Task: Project Scaffolding
+- [x] Task: Project Scaffolding [cefa14e]
     - [ ] Create 'pyproject.toml' or 'requirements.txt' with dependencies (textual, rich, pytest).
     - [ ] Set up basic project structure ('src/', 'tests/').
 - [ ] Task: Basic TUI Application
