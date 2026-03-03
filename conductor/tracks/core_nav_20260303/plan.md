@@ -19,9 +19,9 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2: TreeView Implementation' (Protocol in workflow.md) [6eee268]
 
 ## Phase 3: Directory Traversal and Path Selection
-- [ ] Task: Selection Logic
-    - [ ] Write Tests: Verify that selecting an item in the tree returns the correct absolute path.
-    - [ ] Implement: Add a listener for selection events and store the path of the currently selected directory.
+- [x] Task: Selection Logic [780b539]
+    - [x] Write Tests: Verify that selecting an item in the tree returns the correct absolute path.
+    - [x] Implement: Already implemented in previous step, verified with tests.
 - [ ] Task: Exit and Output Path
     - [ ] Write Tests: Verify the application exits and prints the selected path to stdout.
     - [ ] Implement: Handle the 'Enter' key to exit the application and output the selected directory's path.
