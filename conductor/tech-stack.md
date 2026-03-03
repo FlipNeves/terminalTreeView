@@ -6,7 +6,7 @@
 ## Terminal UI (TUI) Framework
 - **Rich & Custom Selection Mechanism:** 
     - **Rich:** Used for sophisticated text formatting, styling, and rendering the directory tree visualization directly to stdout.
-    - **Custom Selection Loop:** A minimalist keyboard-driven selection loop (e.g., using `readchar` or `pynput`) to handle navigation without clearing the entire console. This ensures a "shy," minimalist, and truly inline experience.
+    - **Custom Selection Loop:** A minimalist keyboard-driven selection loop using Windows-native `msvcrt` for key interception. It uses manual cursor control with ANSI escape codes for smooth "in-place" updates directly under the prompt. This ensures a "shy," minimalist, and truly inline experience.
 
 ## Shell Integration & 'CD' Mechanism
 - **Native Shell Wrappers:** Since a standard process cannot change its parent's current working directory, the tool will provide native shell wrappers (e.g., '.ps1' for PowerShell, '.bat' for CMD, and shell functions for Bash/Zsh). These wrappers will execute the Python tool and then perform the 'cd' command based on the tool's output.
@@ -17,5 +17,5 @@
 
 ## Dependencies
 - **rich:** For enhanced text rendering and styling of the tree.
-- **readchar:** For lightweight, cross-platform keyboard input handling.
+- **msvcrt:** (Windows Native) for efficient keyboard input handling without terminal buffer interference.
 - **click / argparse:** For handling command-line arguments and configuration.
