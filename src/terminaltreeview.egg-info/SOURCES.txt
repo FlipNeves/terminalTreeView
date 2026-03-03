@@ -1,0 +1,9 @@
+pyproject.toml
+src/terminaltreeview/__init__.py
+src/terminaltreeview.egg-info/PKG-INFO
+src/terminaltreeview.egg-info/SOURCES.txt
+src/terminaltreeview.egg-info/dependency_links.txt
+src/terminaltreeview.egg-info/requires.txt
+src/terminaltreeview.egg-info/top_level.txt
+tests/test_app.py
+tests/test_scaffolding.py

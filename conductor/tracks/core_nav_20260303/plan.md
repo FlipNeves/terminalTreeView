@@ -7,7 +7,7 @@
 - [x] Task: Basic TUI Application [c9fff79]
     - [ ] Write Tests: Verify a minimal Textual app can start.
     - [ ] Implement: Create a basic Textual 'App' class that displays a 'Hello World' message.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md)
+- [~] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md)
 
 ## Phase 2: TreeView Implementation
 - [ ] Task: Directory Tree Component

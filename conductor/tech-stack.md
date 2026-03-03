@@ -4,9 +4,9 @@
 - **Python:** Selected for its rich ecosystem of terminal libraries and ease of development. Python's versatility across Windows and Unix-like systems makes it an ideal choice for a cross-platform TUI tool.
 
 ## Terminal UI (TUI) Framework
-- **Textual / Rich:** 
-    - **Textual:** A modern TUI framework built on top of the 'Rich' library, enabling the creation of highly interactive and visually appealing terminal applications with a reactive architecture.
-    - **Rich:** Used for sophisticated text formatting, styling, and basic TUI components, ensuring a 'Rich TUI' experience.
+- **Rich & Custom Selection Mechanism:** 
+    - **Rich:** Used for sophisticated text formatting, styling, and rendering the directory tree visualization directly to stdout.
+    - **Custom Selection Loop:** A minimalist keyboard-driven selection loop (e.g., using `readchar` or `pynput`) to handle navigation without clearing the entire console. This ensures a "shy," minimalist, and truly inline experience.
 
 ## Shell Integration & 'CD' Mechanism
 - **Native Shell Wrappers:** Since a standard process cannot change its parent's current working directory, the tool will provide native shell wrappers (e.g., '.ps1' for PowerShell, '.bat' for CMD, and shell functions for Bash/Zsh). These wrappers will execute the Python tool and then perform the 'cd' command based on the tool's output.
@@ -16,6 +16,6 @@
 - **Python Version:** Targeted at Python 3.9+ to leverage modern language features and TUI library support.
 
 ## Dependencies
-- **textual:** For the core interactive TUI and tree visualization.
-- **rich:** For enhanced text rendering and styling within the TUI.
+- **rich:** For enhanced text rendering and styling of the tree.
+- **readchar:** For lightweight, cross-platform keyboard input handling.
 - **click / argparse:** For handling command-line arguments and configuration.

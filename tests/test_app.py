@@ -1,11 +1,17 @@
-from textual.app import App
-from terminaltreeview.app import TreeViewApp
+import os
 import pytest
+from terminaltreeview.app import DirectoryNavigator
 
-@pytest.mark.asyncio
-async def test_app_initialization():
-    """Verify that the TreeViewApp can be initialized and started."""
-    app = TreeViewApp()
-    async with app.run_test() as pilot:
-        assert app.title == "Terminal TreeView"
-        assert app.sub_title == "Navigate and CD"
+def test_navigator_initialization():
+    """Verify that the DirectoryNavigator can be initialized."""
+    nav = DirectoryNavigator()
+    assert nav.root_dir == os.getcwd()
+    assert ".." in nav.items
+
+def test_navigator_render():
+    """Verify that the render method returns a Tree object."""
+    from rich.tree import Tree
+    nav = DirectoryNavigator()
+    tree = nav.render()
+    assert isinstance(tree, Tree)
+    assert "📂" in str(tree.label)
