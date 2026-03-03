@@ -22,9 +22,9 @@
 - [x] Task: Selection Logic [780b539]
     - [x] Write Tests: Verify that selecting an item in the tree returns the correct absolute path.
     - [x] Implement: Already implemented in previous step, verified with tests.
-- [ ] Task: Exit and Output Path
-    - [ ] Write Tests: Verify the application exits and prints the selected path to stdout.
-    - [ ] Implement: Handle the 'Enter' key to exit the application and output the selected directory's path.
+- [x] Task: Exit and Output Path [7a2416c]
+    - [x] Write Tests: Verify the application exits and prints the selected path to stdout.
+    - [x] Implement: Already implemented in previous steps, verified with tests.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Directory Traversal and Path Selection' (Protocol in workflow.md)
 
 ## Phase 4: Shell Integration Wrappers
