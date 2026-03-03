@@ -25,6 +25,7 @@ def test_navigator_lists_directories(tmp_path):
 def test_navigator_render():
     """Verify that the render method returns a Tree object with correct styling."""
     from rich.tree import Tree
+    from rich.console import Console
     nav = DirectoryNavigator()
     tree = nav.render()
     assert isinstance(tree, Tree)
@@ -32,14 +33,22 @@ def test_navigator_render():
     assert "📂" in str(tree.label)
     assert "bold blue" in str(tree.label)
     
-    # Check for item styling (prefix and color)
-    renderable = str(tree.label)
-    # Since tree children are private or complex to inspect as strings directly from 'Tree' object without a console
-    # we can check if the items are correctly formatted in the internal logic or by rendering to a dummy console
-    from rich.console import Console
     console = Console(width=80)
     with console.capture() as capture:
         console.print(tree)
     output = capture.get()
     assert "📁" in output or "⬆️" in output
     assert ">" in output  # Selected item prefix
+
+def test_navigator_selection_path(tmp_path):
+    """Verify that selecting an item returns the correct absolute path."""
+    (tmp_path / "target_dir").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    
+    # items = ['..', 'target_dir'] (alphabetical order of dirs)
+    nav.selected_index = 1
+    
+    selected_item = nav.items[nav.selected_index]
+    result_path = os.path.abspath(os.path.join(nav.root_dir, selected_item))
+    
+    assert result_path == str((tmp_path / "target_dir").resolve())
