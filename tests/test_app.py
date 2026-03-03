@@ -1,5 +1,6 @@
 import os
 import pytest
+import readchar
 from terminaltreeview.app import DirectoryNavigator
 
 def test_navigator_initialization():
@@ -52,3 +53,21 @@ def test_navigator_selection_path(tmp_path):
     result_path = os.path.abspath(os.path.join(nav.root_dir, selected_item))
     
     assert result_path == str((tmp_path / "target_dir").resolve())
+
+def test_navigator_run_exit_with_path(tmp_path, monkeypatch):
+    """Verify that run() returns path on ENTER."""
+    (tmp_path / "subdir").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    
+    # Mock readchar.readkey to return ENTER immediately
+    # Default selected_index is 0 ('..')
+    monkeypatch.setattr("readchar.readkey", lambda: readchar.key.ENTER)
+    
+    # We also need to mock Live because it tries to use terminal features
+    # but for this logic test we just want to see if the loop exits with the right path
+    
+    result = nav.run()
+    # os.path.join(tmp_path, "..") resolved. 
+    # Since tmp_path is a subdir of a tmp root, its parent is the tmp root.
+    expected = os.path.abspath(os.path.join(str(tmp_path), ".."))
+    assert result == expected
