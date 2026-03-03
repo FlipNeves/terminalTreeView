@@ -18,14 +18,14 @@
     - [x] Implement: Add icons and colors for directories and navigation.
 - [x] Task: Conductor - User Manual Verification 'Phase 2: TreeView Implementation' (Protocol in workflow.md) [6eee268]
 
-## Phase 3: Directory Traversal and Path Selection
+## Phase 3: Directory Traversal and Path Selection [checkpoint: e7fc7ff]
 - [x] Task: Selection Logic [780b539]
     - [x] Write Tests: Verify that selecting an item in the tree returns the correct absolute path.
-    - [x] Implement: Already implemented in previous step, verified with tests.
+    - [x] Implement: Enhanced navigation (ENTER/RIGHT to enter, LEFT to go up).
 - [x] Task: Exit and Output Path [7a2416c]
-    - [x] Write Tests: Verify the application exits and prints the selected path to stdout.
-    - [x] Implement: Already implemented in previous steps, verified with tests.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Directory Traversal and Path Selection' (Protocol in workflow.md)
+    - [x] Write Tests: Verify CTRL+ENTER exits with path.
+    - [x] Implement: CTRL+ENTER selection and exit logic.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Directory Traversal and Path Selection' (Protocol in workflow.md) [e7fc7ff]
 
 ## Phase 4: Shell Integration Wrappers
 - [ ] Task: PowerShell Wrapper
