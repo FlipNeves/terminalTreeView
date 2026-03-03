@@ -27,11 +27,11 @@
     - [x] Implement: CTRL+ENTER selection and exit logic.
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Directory Traversal and Path Selection' (Protocol in workflow.md) [e7fc7ff]
 
-## Phase 4: Shell Integration Wrappers
+## Phase 4: Shell Integration Wrappers [checkpoint: 7d3bfc8]
 - [x] Task: PowerShell Wrapper [858a74e]
     - [x] Implement: Created 'ttv.ps1'.
 - [x] Task: CMD Batch Wrapper [858a74e]
     - [x] Implement: Created 'ttv.bat'.
 - [x] Task: Bash/Zsh Function Wrapper [858a74e]
     - [x] Implement: Created 'ttv.sh'.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Shell Integration Wrappers' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Shell Integration Wrappers' (Protocol in workflow.md) [7d3bfc8]
