@@ -13,9 +13,9 @@
 - [x] Task: Directory Tree Component [7ac09e3]
     - [x] Write Tests: Verify the tree component correctly lists the contents of a sample directory.
     - [x] Implement: Create custom Rich-based navigator that lists directories.
-- [ ] Task: Visual Styling (Icons and Colors)
-    - [ ] Write Tests: Verify icons and colors are correctly applied to different file types.
-    - [ ] Implement: Customize the 'DirectoryTree' styling to use Rich for icons and specific colors for files and folders.
+- [x] Task: Visual Styling (Icons and Colors) [debc60f]
+    - [x] Write Tests: Verify icons and colors are correctly applied to different file types.
+    - [x] Implement: Add icons and colors for directories and navigation.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: TreeView Implementation' (Protocol in workflow.md)
 
 ## Phase 3: Directory Traversal and Path Selection
