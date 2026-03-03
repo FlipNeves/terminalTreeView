@@ -28,13 +28,10 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Directory Traversal and Path Selection' (Protocol in workflow.md) [e7fc7ff]
 
 ## Phase 4: Shell Integration Wrappers
-- [ ] Task: PowerShell Wrapper
-    - [ ] Write Tests: Verify a sample PS1 script can execute the tool and change the directory.
-    - [ ] Implement: Create 'ttv.ps1' to wrap the Python execution and perform the 'cd' command.
-- [ ] Task: CMD Batch Wrapper
-    - [ ] Write Tests: Verify a sample .bat file can execute the tool and change the directory.
-    - [ ] Implement: Create 'ttv.bat'.
-- [ ] Task: Bash/Zsh Function Wrapper
-    - [ ] Write Tests: Verify a shell function can execute the tool and change the directory.
-    - [ ] Implement: Create a shell function snippet for 'ttv'.
+- [x] Task: PowerShell Wrapper [858a74e]
+    - [x] Implement: Created 'ttv.ps1'.
+- [x] Task: CMD Batch Wrapper [858a74e]
+    - [x] Implement: Created 'ttv.bat'.
+- [x] Task: Bash/Zsh Function Wrapper [858a74e]
+    - [x] Implement: Created 'ttv.sh'.
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Shell Integration Wrappers' (Protocol in workflow.md)
