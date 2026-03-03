@@ -1,13 +1,13 @@
 # Implementation Plan: Core Interactive TreeView and 'CD' Shell Integration
 
-## Phase 1: Project Setup and Skeleton
+## Phase 1: Project Setup and Skeleton [checkpoint: 432b67e]
 - [x] Task: Project Scaffolding [cefa14e]
-    - [ ] Create 'pyproject.toml' or 'requirements.txt' with dependencies (textual, rich, pytest).
-    - [ ] Set up basic project structure ('src/', 'tests/').
+    - [x] Create 'pyproject.toml' or 'requirements.txt' with dependencies (rich, readchar, pytest).
+    - [x] Set up basic project structure ('src/', 'tests/').
 - [x] Task: Basic TUI Application [c9fff79]
-    - [ ] Write Tests: Verify a minimal Textual app can start.
-    - [ ] Implement: Create a basic Textual 'App' class that displays a 'Hello World' message.
-- [~] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md)
+    - [x] Write Tests: Verify a minimal app can start and render.
+    - [x] Implement: Create a minimalist Rich-based selection navigator.
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Project Setup and Skeleton' (Protocol in workflow.md) [432b67e]
 
 ## Phase 2: TreeView Implementation
 - [ ] Task: Directory Tree Component
