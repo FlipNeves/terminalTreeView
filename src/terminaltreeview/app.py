@@ -120,12 +120,21 @@ class DirectoryNavigator:
             if is_dir and expanded:
                 self._walk_dir(full_path, depth + 1)
 
-    def render(self) -> Text:
-        """Render the tree as a Rich Text object."""
+    def render(self, viewport=None) -> Text:
+        """Render the tree as a Rich Text object.
+        
+        Args:
+            viewport: Optional tuple (view_start, view_end) to limit which
+                      items from flat_list are rendered. If None, renders all.
+        """
         output = Text()
 
-        # Breadcrumb: full path so the user always knows where they are
-        output.append(f"  {self.root_dir}", style="dim")
+        # Dynamic breadcrumb: shows full path to the selected item
+        if self.flat_list and 0 <= self.selected_index < len(self.flat_list):
+            selected_path = self.flat_list[self.selected_index].path
+        else:
+            selected_path = self.root_dir
+        output.append(f"  {selected_path}", style="dim")
         output.append("\n")
 
         # Root header
@@ -135,8 +144,19 @@ class DirectoryNavigator:
         output.append(f"📂 {root_name}", style="bold blue")
         output.append("\n")
 
-        # Tree entries
-        for i, node in enumerate(self.flat_list):
+        # Determine the slice of flat_list to render
+        if viewport is not None:
+            view_start, view_end = viewport
+        else:
+            view_start, view_end = 0, len(self.flat_list)
+
+        # Scroll-up indicator
+        if view_start > 0:
+            output.append(f"    ↑ {view_start} more...\n", style="dim italic")
+
+        # Tree entries (only items within the viewport)
+        for i in range(view_start, view_end):
+            node = self.flat_list[i]
             is_selected = (i == self.selected_index)
             indent = "    " + "    " * node.depth
 
@@ -162,6 +182,25 @@ class DirectoryNavigator:
 
             output.append("\n")
 
+        # Scroll-down indicator
+        remaining = len(self.flat_list) - view_end
+        if remaining > 0:
+            output.append(f"    ↓ {remaining} more...\n", style="dim italic")
+
+        # Help bar with keyboard shortcuts
+        output.append("\n")
+        output.append("  ↑↓", style="bold white")
+        output.append(" Navigate  ", style="dim")
+        output.append("Enter", style="bold white")
+        output.append(" Expand  ", style="dim")
+        output.append("Ctrl+Enter", style="bold white")
+        output.append(" Select  ", style="dim")
+        output.append("← ", style="bold white")
+        output.append("Back  ", style="dim")
+        output.append("Q", style="bold white")
+        output.append(" Quit", style="dim")
+        output.append("\n")
+
         return output
 
     def _get_cursor_y(self) -> int:
@@ -175,6 +214,72 @@ class DirectoryNavigator:
         csbi = _CONSOLE_SCREEN_BUFFER_INFO()
         _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
         return csbi
+
+    def _get_visible_height(self) -> int:
+        """Read the visible window height from the console buffer."""
+        csbi = self._get_buffer_info()
+        return csbi.srWindow.Bottom - csbi.srWindow.Top + 1
+
+    def _compute_viewport(self, visible_height: int) -> tuple[int, int] | None:
+        """Compute the (start, end) slice of flat_list to display.
+        
+        Returns None if all items fit within the visible height.
+        
+        Layout budget:
+          - 2 lines: breadcrumb + root header
+          - 1 line: scroll-up indicator (if needed)
+          - 1 line: scroll-down indicator (if needed)
+          - 1 line: safety margin (cursor line)
+        """
+        total = len(self.flat_list)
+        # Reserve lines for: breadcrumb (1) + root header (1) + help bar (2) + safety margin (1)
+        header_lines = 5
+        max_items = visible_height - header_lines
+
+        if max_items <= 0:
+            max_items = 1  # Always show at least 1 item
+
+        if total <= max_items:
+            return None  # Everything fits, no viewport needed
+
+        # Account for scroll indicator lines (they take space from items)
+        # We'll always have at least a down-indicator when viewport is active
+        # and potentially an up-indicator too
+        sel = self.selected_index
+
+        # Calculate window centered on selected_index
+        half = max_items // 2
+        start = sel - half
+        end = start + max_items
+
+        # Clamp to bounds
+        if start < 0:
+            start = 0
+            end = max_items
+        if end > total:
+            end = total
+            start = max(0, end - max_items)
+
+        # Shrink window to account for indicator lines
+        if start > 0:
+            # Up indicator takes 1 line, so show 1 fewer item
+            end = min(total, start + max_items - 1)
+        if end < total:
+            # Down indicator takes 1 line, so show 1 fewer item
+            if start > 0:
+                end = min(total, start + max_items - 2)
+            else:
+                end = min(total, start + max_items - 1)
+
+        # Re-clamp after adjustments to ensure selected_index is visible
+        if sel >= end:
+            end = sel + 1
+            start = max(0, end - max_items + (2 if end < total else 0) + (1 if start > 0 else 0))
+        if sel < start:
+            start = sel
+            end = min(total, start + max_items - (1 if start > 0 else 0) - (1 if start + max_items < total else 0))
+
+        return (start, end)
 
     def clear_previous_render(self):
         """Clear previously rendered content using Win32 Console API.
@@ -267,7 +372,8 @@ class DirectoryNavigator:
         while True:
             self.clear_previous_render()
 
-            rendered = self.render()
+            viewport = self._compute_viewport(self._get_visible_height())
+            rendered = self.render(viewport)
             self._print_and_track(rendered)
 
             key = self.get_key()
