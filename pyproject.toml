@@ -1,10 +1,18 @@
 [project]
 name = "terminaltreeview"
 version = "0.1.0"
+description = "A interactive terminal directory navigator for Windows."
+authors = [
+    { name = "FlipNeves" }
+]
 dependencies = [
     "readchar>=4.0.0",
     "rich>=13.0.0",
 ]
+
+[project.scripts]
+ttv-tool = "terminaltreeview.app:main"
+ttv-setup = "terminaltreeview.setup:main"
 
 [dependency-groups]
 dev = [
