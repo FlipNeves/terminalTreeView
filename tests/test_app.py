@@ -146,3 +146,110 @@ def test_ctrl_enter_exits_with_path(tmp_path, monkeypatch):
     result = nav.run()
     assert result is not None
     assert os.path.isabs(result)
+
+
+def test_viewport_shows_all_when_fits(tmp_path):
+    """When all items fit within visible height, no viewport is needed."""
+    for i in range(5):
+        (tmp_path / f"dir_{i}").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    # visible_height = 30 means max_items = 25, which is > 5 items
+    viewport = nav._compute_viewport(30)
+    assert viewport is None
+
+    # Render without viewport shows all items, no scroll indicators
+    rendered = str(nav.render())
+    assert "more..." not in rendered
+
+
+def test_viewport_limits_output(tmp_path):
+    """When items exceed visible height, viewport limits which items render."""
+    for i in range(30):
+        (tmp_path / f"dir_{i:02d}").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    nav.selected_index = 0
+
+    # Small visible height forces viewport
+    viewport = nav._compute_viewport(10)
+    assert viewport is not None
+    start, end = viewport
+    assert end - start < 30  # Not all 30 items shown
+    assert start <= nav.selected_index < end  # Selected item is visible
+
+
+def test_viewport_scroll_indicators(tmp_path):
+    """Verify scroll indicators appear when items are hidden."""
+    for i in range(30):
+        (tmp_path / f"dir_{i:02d}").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    nav.selected_index = 15  # Middle of the list
+
+    viewport = nav._compute_viewport(10)
+    assert viewport is not None
+    start, end = viewport
+
+    rendered = str(nav.render(viewport))
+    # Both indicators should be present (items hidden above and below)
+    assert "↑" in rendered
+    assert "↓" in rendered
+    assert "more..." in rendered
+
+
+def test_viewport_follows_selection(tmp_path):
+    """Moving selected_index shifts the viewport window."""
+    for i in range(30):
+        (tmp_path / f"dir_{i:02d}").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+
+    # Select near the top
+    nav.selected_index = 2
+    vp_top = nav._compute_viewport(10)
+    assert vp_top is not None
+    assert vp_top[0] <= 2 < vp_top[1]
+
+    # Select near the bottom
+    nav.selected_index = 28
+    vp_bottom = nav._compute_viewport(10)
+    assert vp_bottom is not None
+    assert vp_bottom[0] <= 28 < vp_bottom[1]
+
+    # The windows should be different
+    assert vp_top[0] != vp_bottom[0]
+
+
+def test_get_visible_height(tmp_path):
+    """Verify _get_visible_height returns a positive integer."""
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    height = nav._get_visible_height()
+    assert isinstance(height, int)
+    assert height > 0
+
+
+def test_dynamic_breadcrumb_shows_selected_path(tmp_path):
+    """Verify the breadcrumb shows the path of the currently selected item."""
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+
+    # Select first item (alpha)
+    nav.selected_index = 0
+    rendered = str(nav.render())
+    assert str(tmp_path / "alpha") in rendered
+
+    # Select second item (beta)
+    nav.selected_index = 1
+    rendered = str(nav.render())
+    assert str(tmp_path / "beta") in rendered
+
+
+def test_help_bar_is_rendered(tmp_path):
+    """Verify the help bar with keyboard shortcuts is always present."""
+    (tmp_path / "folder").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    rendered = str(nav.render())
+
+    assert "Navigate" in rendered
+    assert "Expand" in rendered
+    assert "Ctrl+Enter" in rendered
+    assert "Select" in rendered
+    assert "Quit" in rendered
