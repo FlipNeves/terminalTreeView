@@ -1,25 +1,39 @@
 import os
 import sys
 import ctypes
+import ctypes.wintypes
 import msvcrt
 from rich.console import Console
 from rich.text import Text
 
-# Windows constants for enabling ANSI/VT processing on the console
+# Windows constant for enabling ANSI/VT escape sequence processing (colors)
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
-_STD_OUTPUT_HANDLE = -11
+_kernel32 = ctypes.windll.kernel32
 
 
-def _enable_vt_processing():
-    """Enable ANSI escape code processing on the Windows console."""
+class _COORD(ctypes.Structure):
+    _fields_ = [("X", ctypes.wintypes.SHORT), ("Y", ctypes.wintypes.SHORT)]
+
+
+class _CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", _COORD),
+        ("dwCursorPosition", _COORD),
+        ("wAttributes", ctypes.wintypes.WORD),
+        ("srWindow", ctypes.wintypes.SMALL_RECT),
+        ("dwMaximumWindowSize", _COORD),
+    ]
+
+
+def _enable_vt_processing(file_obj):
+    """Enable ANSI escape code processing on a specific file handle (for colors)."""
     try:
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(_STD_OUTPUT_HANDLE)
+        handle = msvcrt.get_osfhandle(file_obj.fileno())
         mode = ctypes.c_ulong()
-        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-        kernel32.SetConsoleMode(handle, mode.value | _ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        _kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        _kernel32.SetConsoleMode(handle, mode.value | _ENABLE_VIRTUAL_TERMINAL_PROCESSING)
     except Exception:
-        pass  # Non-Windows or restricted environment — colors will degrade gracefully
+        pass
 
 
 class TreeNode:
@@ -39,11 +53,14 @@ class DirectoryNavigator:
         self.initial_root = os.path.abspath(root_dir or os.getcwd())
         self.root_dir = self.initial_root
 
-        # Open CONOUT$ — the Windows console device that ALWAYS points to the
-        # active console buffer, regardless of stdout/stderr pipe redirections.
-        # This guarantees colors work even when called from a shell wrapper.
-        _enable_vt_processing()
+        # Open CONOUT$ — always points to the active console buffer,
+        # regardless of stdout/stderr pipe redirections.
         self._con_stream = open('CONOUT$', 'w', encoding='utf-8')
+        _enable_vt_processing(self._con_stream)
+
+        # Get the raw Win32 handle for direct console API calls (cursor control)
+        self._con_handle = msvcrt.get_osfhandle(self._con_stream.fileno())
+
         self.console = Console(
             file=self._con_stream,
             force_terminal=True,
@@ -54,7 +71,8 @@ class DirectoryNavigator:
         self.expanded_dirs: set[str] = set()
         self.flat_list: list[TreeNode] = []
         self._rebuild_flat_list()
-        self.last_line_count = 0
+        self._render_start_y = None   # Y position where last render started
+        self._render_line_count = 0   # Number of terminal lines in last render
 
     def _list_dir_contents(self, dir_path: str) -> list[tuple[str, bool]]:
         """List contents of a directory, returning (name, is_dir) sorted: dirs first, then files."""
@@ -146,12 +164,64 @@ class DirectoryNavigator:
 
         return output
 
+    def _get_cursor_y(self) -> int:
+        """Read cursor Y position from the Win32 Console API."""
+        csbi = _CONSOLE_SCREEN_BUFFER_INFO()
+        _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
+        return csbi.dwCursorPosition.Y
+
+    def _get_buffer_info(self) -> _CONSOLE_SCREEN_BUFFER_INFO:
+        """Read full console screen buffer info."""
+        csbi = _CONSOLE_SCREEN_BUFFER_INFO()
+        _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
+        return csbi
+
     def clear_previous_render(self):
-        """Move cursor up and clear lines from the previous render."""
-        if self.last_line_count > 0:
-            for _ in range(self.last_line_count):
-                self._con_stream.write("\033[F\033[K")
-            self._con_stream.flush()
+        """Clear previously rendered content using Win32 Console API.
+        
+        Uses _render_start_y and _render_line_count which were calculated
+        AFTER the last print (scroll-proof).
+        """
+        if self._render_start_y is None:
+            return
+        self._con_stream.flush()
+        csbi = self._get_buffer_info()
+        buf_width = csbi.dwSize.X
+        origin = _COORD(0, self._render_start_y)
+        count = buf_width * (self._render_line_count + 1)
+        written = ctypes.c_ulong()
+        _kernel32.FillConsoleOutputCharacterW(
+            self._con_handle, ord(' '), count, origin, ctypes.byref(written))
+        _kernel32.FillConsoleOutputAttribute(
+            self._con_handle, csbi.wAttributes, count, origin, ctypes.byref(written))
+        _kernel32.SetConsoleCursorPosition(self._con_handle, origin)
+
+    def _print_and_track(self, rendered: Text):
+        """Print rendered content and record its position (scroll-proof).
+        
+        After Rich prints, we read the cursor Y and subtract the line count
+        to find where the content actually starts. This works correctly
+        even if the console scrolled during printing.
+        """
+        # Count lines via Rich capture (accounts for line wrapping)
+        with self.console.capture() as capture:
+            self.console.print(rendered, end="")
+        raw_output = capture.get()
+        line_count = raw_output.count('\n')
+
+        # Actually write to the console
+        self._con_stream.write(raw_output)
+        self._con_stream.flush()
+
+        # Read post-print cursor Y
+        post_y = self._get_cursor_y()
+
+        # start_y = post_y - line_count is ALWAYS correct:
+        # - No scroll:  post_y = pre_y + lines → start_y = pre_y ✓
+        # - Scroll by S: post_y = pre_y + lines - S, pre_y shifted to pre_y - S
+        #                → start_y = pre_y - S ✓
+        self._render_start_y = max(0, post_y - line_count)
+        self._render_line_count = line_count
 
     def get_key(self):
         ch = msvcrt.getch()
@@ -198,8 +268,7 @@ class DirectoryNavigator:
             self.clear_previous_render()
 
             rendered = self.render()
-            self.console.print(rendered, end="")
-            self.last_line_count = str(rendered).count('\n')
+            self._print_and_track(rendered)
 
             key = self.get_key()
 
