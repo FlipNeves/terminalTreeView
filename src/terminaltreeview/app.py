@@ -6,13 +6,12 @@ import msvcrt
 from rich.console import Console
 from rich.text import Text
 
-# Windows constant for enabling ANSI/VT escape sequence processing (colors)
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 _kernel32 = ctypes.windll.kernel32
 try:
     _user32 = ctypes.windll.user32
 except AttributeError:
-    _user32 = None  # Fallback for non-Windows (though this app is Windows-focused)
+    _user32 = None
 
 VK_SHIFT = 0x10
 
@@ -32,7 +31,6 @@ class _CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
 
 
 def _enable_vt_processing(file_obj):
-    """Enable ANSI escape code processing on a specific file handle (for colors)."""
     try:
         handle = msvcrt.get_osfhandle(file_obj.fileno())
         mode = ctypes.c_ulong()
@@ -43,7 +41,6 @@ def _enable_vt_processing(file_obj):
 
 
 class TreeNode:
-    """Represents a single entry in the flat navigation list."""
     __slots__ = ('path', 'name', 'depth', 'is_dir', 'is_expanded')
 
     def __init__(self, path: str, name: str, depth: int, is_dir: bool, is_expanded: bool = False):
@@ -59,29 +56,19 @@ class DirectoryNavigator:
         self.initial_root = os.path.abspath(root_dir or os.getcwd())
         self.root_dir = self.initial_root
 
-        # Open CONOUT$ — always points to the active console buffer,
-        # regardless of stdout/stderr pipe redirections.
         self._con_stream = open('CONOUT$', 'w', encoding='utf-8')
         _enable_vt_processing(self._con_stream)
-
-        # Get the raw Win32 handle for direct console API calls (cursor control)
         self._con_handle = msvcrt.get_osfhandle(self._con_stream.fileno())
 
-        self.console = Console(
-            file=self._con_stream,
-            force_terminal=True,
-            color_system="truecolor",
-        )
-
+        self.console = Console(file=self._con_stream, force_terminal=True, color_system="truecolor")
         self.selected_index = 0
         self.expanded_dirs: set[str] = set()
         self.flat_list: list[TreeNode] = []
         self._rebuild_flat_list()
-        self._render_start_y = None   # Y position where last render started
-        self._render_line_count = 0   # Number of terminal lines in last render
+        self._render_start_y = None   
+        self._render_line_count = 0 
 
     def _list_dir_contents(self, dir_path: str) -> list[tuple[str, bool]]:
-        """List contents of a directory, returning (name, is_dir) sorted: dirs first, then files."""
         try:
             entries = os.listdir(dir_path)
         except PermissionError:
@@ -103,14 +90,12 @@ class DirectoryNavigator:
         return dirs + files
 
     def _rebuild_flat_list(self):
-        """Build the flat navigation list by walking expanded directories."""
         self.flat_list = []
         self._walk_dir(self.root_dir, depth=0)
         if self.selected_index >= len(self.flat_list):
             self.selected_index = max(0, len(self.flat_list) - 1)
 
     def _walk_dir(self, dir_path: str, depth: int):
-        """Recursively walk the directory, adding expanded children."""
         contents = self._list_dir_contents(dir_path)
         for name, is_dir in contents:
             full_path = os.path.join(dir_path, name)
@@ -127,15 +112,8 @@ class DirectoryNavigator:
                 self._walk_dir(full_path, depth + 1)
 
     def render(self, viewport=None) -> Text:
-        """Render the tree as a Rich Text object.
-        
-        Args:
-            viewport: Optional tuple (view_start, view_end) to limit which
-                      items from flat_list are rendered. If None, renders all.
-        """
         output = Text()
 
-        # Dynamic breadcrumb: shows full path to the selected item
         if self.flat_list and 0 <= self.selected_index < len(self.flat_list):
             selected_path = self.flat_list[self.selected_index].path
         else:
@@ -143,24 +121,20 @@ class DirectoryNavigator:
         output.append(f"  {selected_path}", style="dim")
         output.append("\n")
 
-        # Root header
         root_name = os.path.basename(self.root_dir) or self.root_dir
         output.append("  ", style="")
         output.append(f"▼ ", style="bold white")
         output.append(f"📂 {root_name}", style="bold blue")
         output.append("\n")
 
-        # Determine the slice of flat_list to render
         if viewport is not None:
             view_start, view_end = viewport
         else:
             view_start, view_end = 0, len(self.flat_list)
 
-        # Scroll-up indicator
         if view_start > 0:
             output.append(f"    ↑ {view_start} more...\n", style="dim italic")
 
-        # Tree entries (only items within the viewport)
         for i in range(view_start, view_end):
             node = self.flat_list[i]
             is_selected = (i == self.selected_index)
@@ -182,18 +156,16 @@ class DirectoryNavigator:
                 output.append(icon, style="")
                 output.append(node.name, style=base_style)
             else:
-                output.append("  ", style="")  # space where arrow would be
+                output.append("  ", style="")  
                 output.append("M⁺ ", style="green" if not is_selected else "bold cyan")
                 output.append(node.name, style=base_style)
 
             output.append("\n")
 
-        # Scroll-down indicator
         remaining = len(self.flat_list) - view_end
         if remaining > 0:
             output.append(f"    ↓ {remaining} more...\n", style="dim italic")
 
-        # Help bar with keyboard shortcuts
         output.append("\n")
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
@@ -212,55 +184,36 @@ class DirectoryNavigator:
         return output
 
     def _get_cursor_y(self) -> int:
-        """Read cursor Y position from the Win32 Console API."""
         csbi = _CONSOLE_SCREEN_BUFFER_INFO()
         _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
         return csbi.dwCursorPosition.Y
 
     def _get_buffer_info(self) -> _CONSOLE_SCREEN_BUFFER_INFO:
-        """Read full console screen buffer info."""
         csbi = _CONSOLE_SCREEN_BUFFER_INFO()
         _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
         return csbi
 
     def _get_visible_height(self) -> int:
-        """Read the visible window height from the console buffer."""
         csbi = self._get_buffer_info()
         return csbi.srWindow.Bottom - csbi.srWindow.Top + 1
 
     def _compute_viewport(self, visible_height: int) -> tuple[int, int] | None:
-        """Compute the (start, end) slice of flat_list to display.
-        
-        Returns None if all items fit within the visible height.
-        
-        Layout budget:
-          - 2 lines: breadcrumb + root header
-          - 1 line: scroll-up indicator (if needed)
-          - 1 line: scroll-down indicator (if needed)
-          - 1 line: safety margin (cursor line)
-        """
         total = len(self.flat_list)
-        # Reserve lines for: breadcrumb (1) + root header (1) + help bar (2) + safety margin (1)
         header_lines = 5
         max_items = visible_height - header_lines
 
         if max_items <= 0:
-            max_items = 1  # Always show at least 1 item
+            max_items = 1  
 
         if total <= max_items:
-            return None  # Everything fits, no viewport needed
+            return None  
 
-        # Account for scroll indicator lines (they take space from items)
-        # We'll always have at least a down-indicator when viewport is active
-        # and potentially an up-indicator too
         sel = self.selected_index
 
-        # Calculate window centered on selected_index
         half = max_items // 2
         start = sel - half
         end = start + max_items
 
-        # Clamp to bounds
         if start < 0:
             start = 0
             end = max_items
@@ -268,18 +221,14 @@ class DirectoryNavigator:
             end = total
             start = max(0, end - max_items)
 
-        # Shrink window to account for indicator lines
         if start > 0:
-            # Up indicator takes 1 line, so show 1 fewer item
             end = min(total, start + max_items - 1)
         if end < total:
-            # Down indicator takes 1 line, so show 1 fewer item
             if start > 0:
                 end = min(total, start + max_items - 2)
             else:
                 end = min(total, start + max_items - 1)
 
-        # Re-clamp after adjustments to ensure selected_index is visible
         if sel >= end:
             end = sel + 1
             start = max(0, end - max_items + (2 if end < total else 0) + (1 if start > 0 else 0))
@@ -290,11 +239,6 @@ class DirectoryNavigator:
         return (start, end)
 
     def clear_previous_render(self):
-        """Clear previously rendered content using Win32 Console API.
-        
-        Uses _render_start_y and _render_line_count which were calculated
-        AFTER the last print (scroll-proof).
-        """
         if self._render_start_y is None:
             return
         self._con_stream.flush()
@@ -310,29 +254,16 @@ class DirectoryNavigator:
         _kernel32.SetConsoleCursorPosition(self._con_handle, origin)
 
     def _print_and_track(self, rendered: Text):
-        """Print rendered content and record its position (scroll-proof).
-        
-        After Rich prints, we read the cursor Y and subtract the line count
-        to find where the content actually starts. This works correctly
-        even if the console scrolled during printing.
-        """
-        # Count lines via Rich capture (accounts for line wrapping)
         with self.console.capture() as capture:
             self.console.print(rendered, end="")
         raw_output = capture.get()
         line_count = raw_output.count('\n')
 
-        # Actually write to the console
         self._con_stream.write(raw_output)
         self._con_stream.flush()
 
-        # Read post-print cursor Y
         post_y = self._get_cursor_y()
 
-        # start_y = post_y - line_count is ALWAYS correct:
-        # - No scroll:  post_y = pre_y + lines → start_y = pre_y ✓
-        # - Scroll by S: post_y = pre_y + lines - S, pre_y shifted to pre_y - S
-        #                → start_y = pre_y - S ✓
         self._render_start_y = max(0, post_y - line_count)
         self._render_line_count = line_count
 
@@ -351,28 +282,23 @@ class DirectoryNavigator:
         return None
 
     def _toggle_expand(self, node: TreeNode):
-        """Expand or collapse a directory node."""
         if node.is_expanded:
-            # Collapse: remove from expanded set (and any children)
             self._collapse_recursive(node.path)
         else:
             self.expanded_dirs.add(node.path)
         self._rebuild_flat_list()
 
     def _collapse_recursive(self, dir_path: str):
-        """Remove a directory and all its sub-expansions from expanded_dirs."""
         self.expanded_dirs.discard(dir_path)
         to_remove = [p for p in self.expanded_dirs if p.startswith(dir_path + os.sep)]
         for p in to_remove:
             self.expanded_dirs.discard(p)
 
     def _navigate_up(self):
-        """Go up one level — if already at or above initial_root, reset the root."""
         parent = os.path.dirname(self.root_dir)
         if parent == self.root_dir:
-            return  # Already at filesystem root
+            return  
         self.root_dir = parent
-        # If we went above the initial root, update it and reset expansions
         if not self.root_dir.startswith(self.initial_root):
             self.initial_root = self.root_dir
         self.expanded_dirs.clear()
@@ -404,17 +330,14 @@ class DirectoryNavigator:
                 if len(self.flat_list) > 0:
                     node = self.flat_list[self.selected_index]
                     if node.is_dir and node.is_expanded:
-                        # Collapse the currently selected expanded directory
                         self._toggle_expand(node)
                     elif node.depth > 0:
-                        # Jump to parent directory in the tree
                         target_depth = node.depth - 1
                         for i in range(self.selected_index - 1, -1, -1):
                             if self.flat_list[i].depth == target_depth:
                                 self.selected_index = i
                                 break
                     else:
-                        # Go up to parent directory of the tree root
                         self._navigate_up()
                 else:
                     self._navigate_up()
@@ -442,8 +365,6 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "init":
         shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
         if shell == "powershell":
-            # Output a single-line function to avoid IEX line-by-line parsing issues
-            # We use quotes and -Path for robustness with space-containing paths
             print(
                 "function ttv { "
                 "$target = ttv-tool @args; "

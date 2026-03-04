@@ -4,7 +4,6 @@ import subprocess
 
 def get_powershell_profile():
     try:
-        # Get the current user's profile path
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "$PROFILE"],
             capture_output=True, text=True, check=True
@@ -16,33 +15,25 @@ def get_powershell_profile():
 def main():
     print("--- terminaltreeview Setup ---")
     profile_path = get_powershell_profile()
-    
     if not profile_path:
         print("Error: Could not determine PowerShell profile path.")
         sys.exit(1)
 
     print(f"Detected PowerShell Profile: {profile_path}")
-    
-    # Ensure profile directory exists
     os.makedirs(os.path.dirname(profile_path), exist_ok=True)
     
-    # Create the line to add. Using Out-String ensures IEX handles multi-line if we ever switch back
     init_line = 'ttv-tool init powershell | Out-String | Invoke-Expression'
     
-    # Read existing profile content
     lines = []
     if os.path.exists(profile_path):
         with open(profile_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-    # Filter out any existing ttv integration lines to prevent duplicates or broken legacy lines
     new_lines = [l for l in lines if 'ttv-tool init' not in l and '# terminaltreeview' not in l]
     
-    # Strip trailing whitespace from the last line to handle file ending cleanly
     if new_lines and not new_lines[-1].endswith('\n'):
         new_lines[-1] += '\n'
         
-    # Add the new integration
     new_lines.append(f"\n# terminaltreeview integration\n{init_line}\n")
 
     try:
