@@ -5,6 +5,7 @@ description = "A interactive terminal directory navigator for Windows."
 authors = [
     { name = "FlipNeves" }
 ]
+readme = "README.md"
 dependencies = [
     "readchar>=4.0.0",
     "rich>=13.0.0",
