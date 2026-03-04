@@ -29,24 +29,30 @@ def main():
     # Create the line to add. Using Out-String ensures IEX handles multi-line if we ever switch back
     init_line = 'ttv-tool init powershell | Out-String | Invoke-Expression'
     
-    # Check if already present
-    already_present = False
+    # Read existing profile content
+    lines = []
     if os.path.exists(profile_path):
         with open(profile_path, 'r', encoding='utf-8') as f:
-            if init_line in f.read():
-                already_present = True
+            lines = f.readlines()
 
-    if already_present:
-        print("Setup already performed! The 'ttv' command should be available in your PowerShell.")
-    else:
-        try:
-            with open(profile_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n# terminaltreeview integration\n{init_line}\n")
-            print("Successfully added terminaltreeview to your PowerShell profile.")
-            print("Please restart your terminal or run: . $PROFILE")
-        except Exception as e:
-            print(f"Error writing to profile: {e}")
-            sys.exit(1)
+    # Filter out any existing ttv integration lines to prevent duplicates or broken legacy lines
+    new_lines = [l for l in lines if 'ttv-tool init' not in l and '# terminaltreeview' not in l]
+    
+    # Strip trailing whitespace from the last line to handle file ending cleanly
+    if new_lines and not new_lines[-1].endswith('\n'):
+        new_lines[-1] += '\n'
+        
+    # Add the new integration
+    new_lines.append(f"\n# terminaltreeview integration\n{init_line}\n")
+
+    try:
+        with open(profile_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+        print("Successfully updated terminaltreeview in your PowerShell profile.")
+        print("Please restart your terminal or run: . $PROFILE")
+    except Exception as e:
+        print(f"Error writing to profile: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

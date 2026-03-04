@@ -443,10 +443,11 @@ def main():
         shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
         if shell == "powershell":
             # Output a single-line function to avoid IEX line-by-line parsing issues
+            # We use quotes and -Path for robustness with space-containing paths
             print(
                 "function ttv { "
-                "$target = ttv-tool $args; "
-                "if ($target -and (Test-Path $target)) { Set-Location $target } "
+                "$target = ttv-tool @args; "
+                "if ($target -and (Test-Path -Path $target)) { Set-Location -Path \"$target\" } "
                 "}"
             )
         elif shell == "cmd":
