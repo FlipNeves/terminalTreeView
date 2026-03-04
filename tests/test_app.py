@@ -137,7 +137,7 @@ def test_navigator_expand_via_run(tmp_path, monkeypatch):
 
 
 def test_ctrl_enter_exits_with_path(tmp_path, monkeypatch):
-    """Verify CTRL+ENTER exits with the selected directory path."""
+    """Verify CTRL+ENTER exits with the parent directory path."""
     (tmp_path / "target").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     nav.selected_index = 0  # First item should be "target"
@@ -145,7 +145,47 @@ def test_ctrl_enter_exits_with_path(tmp_path, monkeypatch):
     monkeypatch.setattr("msvcrt.getch", lambda: b'\x0a')
     result = nav.run()
     assert result is not None
-    assert os.path.isabs(result)
+    assert result == str(tmp_path)
+
+
+def test_shift_enter_exits_with_path(tmp_path, monkeypatch):
+    """Verify Shift+Enter exits with the selected directory path."""
+    (tmp_path / "target").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    nav.selected_index = 0  # First item should be "target"
+
+    # Mock getch to return carriage return
+    monkeypatch.setattr("msvcrt.getch", lambda: b'\r')
+    # Mock _user32.GetKeyState to indicate Shift is pressed (0x8000 bit set)
+    mock_user32 = MagicMock()
+    mock_user32.GetKeyState.return_value = 0x8000
+    monkeypatch.setattr("terminaltreeview.app._user32", mock_user32)
+    
+    result = nav.run()
+    assert result is not None
+    assert result == str((tmp_path / "target").resolve())
+
+
+def test_left_arrow_jumps_to_parent(tmp_path, monkeypatch):
+    """Verify left arrow jumps to parent node if unexpanded directory or file."""
+    (tmp_path / "parent").mkdir()
+    (tmp_path / "parent" / "child").mkdir()
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    
+    # Expand "parent" manually
+    nav._toggle_expand(nav.flat_list[0])
+    
+    # Select "child" (index 1)
+    nav.selected_index = 1
+    
+    # Mock keys: left arrow (b'\x00', b'K'), then 'q' to quit
+    keys = iter([b'\x00', b'K', b'q'])
+    monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
+    
+    nav.run()
+    
+    # Selected index should have jumped back to "parent" (index 0)
+    assert nav.selected_index == 0
 
 
 def test_viewport_shows_all_when_fits(tmp_path):
@@ -250,6 +290,9 @@ def test_help_bar_is_rendered(tmp_path):
 
     assert "Navigate" in rendered
     assert "Expand" in rendered
+    assert "Enter/→" in rendered
     assert "Ctrl+Enter" in rendered
-    assert "Select" in rendered
+    assert "Go Parent" in rendered
+    assert "Shift+Enter" in rendered
+    assert "Go Inside" in rendered
     assert "Quit" in rendered

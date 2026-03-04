@@ -9,6 +9,12 @@ from rich.text import Text
 # Windows constant for enabling ANSI/VT escape sequence processing (colors)
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 _kernel32 = ctypes.windll.kernel32
+try:
+    _user32 = ctypes.windll.user32
+except AttributeError:
+    _user32 = None  # Fallback for non-Windows (though this app is Windows-focused)
+
+VK_SHIFT = 0x10
 
 
 class _COORD(ctypes.Structure):
@@ -191,10 +197,12 @@ class DirectoryNavigator:
         output.append("\n")
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
-        output.append("Enter", style="bold white")
+        output.append("Enter/→", style="bold white")
         output.append(" Expand  ", style="dim")
         output.append("Ctrl+Enter", style="bold white")
-        output.append(" Select  ", style="dim")
+        output.append(" Go Parent  ", style="dim")
+        output.append("Shift+Enter", style="bold white")
+        output.append(" Go Inside  ", style="dim")
         output.append("← ", style="bold white")
         output.append("Back  ", style="dim")
         output.append("Q", style="bold white")
@@ -331,9 +339,12 @@ class DirectoryNavigator:
     def get_key(self):
         ch = msvcrt.getch()
         if ch in (b'\x00', b'\xe0'):
-            ch = msvcrt.getch()
-            return {b'H': 'up', b'P': 'down', b'M': 'right', b'K': 'left'}.get(ch)
-        if ch == b'\r': return 'enter'
+            scan = msvcrt.getch()
+            return {b'H': 'up', b'P': 'down', b'M': 'right', b'K': 'left'}.get(scan)
+        if ch == b'\r':
+            if _user32 and (_user32.GetKeyState(VK_SHIFT) & 0x8000):
+                return 'shift_enter'
+            return 'enter'
         if ch == b'\x0a': return 'ctrl_enter'
         if ch == b'\x03': return 'ctrl_c'
         if ch == b'q': return 'quit'
@@ -395,12 +406,25 @@ class DirectoryNavigator:
                     if node.is_dir and node.is_expanded:
                         # Collapse the currently selected expanded directory
                         self._toggle_expand(node)
+                    elif node.depth > 0:
+                        # Jump to parent directory in the tree
+                        target_depth = node.depth - 1
+                        for i in range(self.selected_index - 1, -1, -1):
+                            if self.flat_list[i].depth == target_depth:
+                                self.selected_index = i
+                                break
                     else:
                         # Go up to parent directory of the tree root
                         self._navigate_up()
                 else:
                     self._navigate_up()
             elif key == 'ctrl_enter':
+                self.clear_previous_render()
+                if len(self.flat_list) > 0:
+                    node = self.flat_list[self.selected_index]
+                    return os.path.dirname(node.path)
+                return self.root_dir
+            elif key == 'shift_enter':
                 self.clear_previous_render()
                 if len(self.flat_list) > 0:
                     node = self.flat_list[self.selected_index]
@@ -414,9 +438,30 @@ class DirectoryNavigator:
                 return None
 
 
-if __name__ == "__main__":
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
+        if shell == "powershell":
+            print(
+                "function ttv {\n"
+                "    $target = ttv-tool $args\n"
+                "    if ($target -and (Test-Path $target)) {\n"
+                "        Set-Location $target\n"
+                "    }\n"
+                "}"
+            )
+        elif shell == "cmd":
+            print("To use ttv in CMD, create a ttv.bat file in your PATH with:\n"
+                  "@echo off\n"
+                  "for /f \"tokens=*\" %%i in ('ttv-tool %*') do cd /d \"%%i\"")
+        return
+
     nav = DirectoryNavigator()
     result = nav.run()
     if result:
         sys.stdout.write(result + '\n')
         sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()
