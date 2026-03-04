@@ -442,12 +442,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "init":
         shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
         if shell == "powershell":
+            # Output a single-line function to avoid IEX line-by-line parsing issues
             print(
-                "function ttv {\n"
-                "    $target = ttv-tool $args\n"
-                "    if ($target -and (Test-Path $target)) {\n"
-                "        Set-Location $target\n"
-                "    }\n"
+                "function ttv { "
+                "$target = ttv-tool $args; "
+                "if ($target -and (Test-Path $target)) { Set-Location $target } "
                 "}"
             )
         elif shell == "cmd":

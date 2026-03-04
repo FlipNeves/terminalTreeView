@@ -26,8 +26,8 @@ def main():
     # Ensure profile directory exists
     os.makedirs(os.path.dirname(profile_path), exist_ok=True)
     
-    # Create the line to add
-    init_line = 'ttv-tool init powershell | Invoke-Expression'
+    # Create the line to add. Using Out-String ensures IEX handles multi-line if we ever switch back
+    init_line = 'ttv-tool init powershell | Out-String | Invoke-Expression'
     
     # Check if already present
     already_present = False
