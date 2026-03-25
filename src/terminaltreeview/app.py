@@ -64,9 +64,11 @@ class DirectoryNavigator:
         self.selected_index = 0
         self.expanded_dirs: set[str] = set()
         self.flat_list: list[TreeNode] = []
+        self.filtered_list: list[TreeNode] = []
+        self.filter_text = ""
         self._rebuild_flat_list()
         self._render_start_y = None   
-        self._render_line_count = 0 
+        self._render_line_count = 0
 
     def _list_dir_contents(self, dir_path: str) -> list[tuple[str, bool]]:
         try:
@@ -92,8 +94,17 @@ class DirectoryNavigator:
     def _rebuild_flat_list(self):
         self.flat_list = []
         self._walk_dir(self.root_dir, depth=0)
-        if self.selected_index >= len(self.flat_list):
-            self.selected_index = max(0, len(self.flat_list) - 1)
+        self._apply_filter()
+
+    def _apply_filter(self):
+        if not hasattr(self, 'filter_text') or not self.filter_text:
+            self.filtered_list = self.flat_list[:]
+        else:
+            lower_filter = self.filter_text.lower()
+            self.filtered_list = [n for n in self.flat_list if lower_filter in n.name.lower()]
+        
+        if self.selected_index >= len(self.filtered_list):
+            self.selected_index = max(0, len(self.filtered_list) - 1)
 
     def _walk_dir(self, dir_path: str, depth: int):
         contents = self._list_dir_contents(dir_path)
@@ -114,8 +125,8 @@ class DirectoryNavigator:
     def render(self, viewport=None) -> Text:
         output = Text()
 
-        if self.flat_list and 0 <= self.selected_index < len(self.flat_list):
-            selected_path = self.flat_list[self.selected_index].path
+        if self.filtered_list and 0 <= self.selected_index < len(self.filtered_list):
+            selected_path = self.filtered_list[self.selected_index].path
         else:
             selected_path = self.root_dir
         output.append(f"  {selected_path}", style="dim")
@@ -130,13 +141,13 @@ class DirectoryNavigator:
         if viewport is not None:
             view_start, view_end = viewport
         else:
-            view_start, view_end = 0, len(self.flat_list)
+            view_start, view_end = 0, len(self.filtered_list)
 
         if view_start > 0:
             output.append(f"    ↑ {view_start} more...\n", style="dim italic")
 
         for i in range(view_start, view_end):
-            node = self.flat_list[i]
+            node = self.filtered_list[i]
             is_selected = (i == self.selected_index)
             indent = "    " + "    " * node.depth
 
@@ -162,11 +173,14 @@ class DirectoryNavigator:
 
             output.append("\n")
 
-        remaining = len(self.flat_list) - view_end
+        remaining = len(self.filtered_list) - view_end
         if remaining > 0:
             output.append(f"    ↓ {remaining} more...\n", style="dim italic")
 
         output.append("\n")
+        if self.filter_text:
+            output.append(f"  Filter: {self.filter_text}\n\n", style="bold yellow")
+            
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
         output.append("Enter/→", style="bold white")
@@ -177,8 +191,8 @@ class DirectoryNavigator:
         output.append(" Go Inside  ", style="dim")
         output.append("← ", style="bold white")
         output.append("Back  ", style="dim")
-        output.append("Q", style="bold white")
-        output.append(" Quit", style="dim")
+        output.append("Esc", style="bold white")
+        output.append(" Quit/Clear", style="dim")
         output.append("\n")
 
         return output
@@ -198,7 +212,7 @@ class DirectoryNavigator:
         return csbi.srWindow.Bottom - csbi.srWindow.Top + 1
 
     def _compute_viewport(self, visible_height: int) -> tuple[int, int] | None:
-        total = len(self.flat_list)
+        total = len(self.filtered_list)
         header_lines = 5
         max_items = visible_height - header_lines
 
@@ -277,9 +291,14 @@ class DirectoryNavigator:
                 return 'shift_enter'
             return 'enter'
         if ch == b'\x0a': return 'ctrl_enter'
+        if ch == b'\x08': return 'backspace'
+        if ch == b'\x1b': return 'escape'
         if ch == b'\x03': return 'ctrl_c'
-        if ch == b'q': return 'quit'
-        return None
+        
+        try:
+            return ch.decode('utf-8')
+        except UnicodeDecodeError:
+            return None
 
     def _toggle_expand(self, node: TreeNode):
         if node.is_expanded:
@@ -316,25 +335,25 @@ class DirectoryNavigator:
             key = self.get_key()
 
             if key == 'up':
-                if len(self.flat_list) > 0:
-                    self.selected_index = (self.selected_index - 1) % len(self.flat_list)
+                if len(self.filtered_list) > 0:
+                    self.selected_index = (self.selected_index - 1) % len(self.filtered_list)
             elif key == 'down':
-                if len(self.flat_list) > 0:
-                    self.selected_index = (self.selected_index + 1) % len(self.flat_list)
+                if len(self.filtered_list) > 0:
+                    self.selected_index = (self.selected_index + 1) % len(self.filtered_list)
             elif key in ('enter', 'right'):
-                if len(self.flat_list) > 0:
-                    node = self.flat_list[self.selected_index]
+                if len(self.filtered_list) > 0:
+                    node = self.filtered_list[self.selected_index]
                     if node.is_dir:
                         self._toggle_expand(node)
             elif key == 'left':
-                if len(self.flat_list) > 0:
-                    node = self.flat_list[self.selected_index]
+                if len(self.filtered_list) > 0:
+                    node = self.filtered_list[self.selected_index]
                     if node.is_dir and node.is_expanded:
                         self._toggle_expand(node)
                     elif node.depth > 0:
                         target_depth = node.depth - 1
                         for i in range(self.selected_index - 1, -1, -1):
-                            if self.flat_list[i].depth == target_depth:
+                            if self.filtered_list[i].depth == target_depth:
                                 self.selected_index = i
                                 break
                     else:
@@ -343,22 +362,36 @@ class DirectoryNavigator:
                     self._navigate_up()
             elif key == 'ctrl_enter':
                 self.clear_previous_render()
-                if len(self.flat_list) > 0:
-                    node = self.flat_list[self.selected_index]
+                if len(self.filtered_list) > 0:
+                    node = self.filtered_list[self.selected_index]
                     return os.path.dirname(node.path)
                 return self.root_dir
             elif key == 'shift_enter':
                 self.clear_previous_render()
-                if len(self.flat_list) > 0:
-                    node = self.flat_list[self.selected_index]
+                if len(self.filtered_list) > 0:
+                    node = self.filtered_list[self.selected_index]
                     if node.is_dir:
                         return node.path
                     else:
                         return os.path.dirname(node.path)
                 return self.root_dir
-            elif key in ('quit', 'ctrl_c'):
+            elif key == 'backspace':
+                if self.filter_text:
+                    self.filter_text = self.filter_text[:-1]
+                    self._apply_filter()
+            elif key == 'escape':
+                if self.filter_text:
+                    self.filter_text = ""
+                    self._apply_filter()
+                else:
+                    self.clear_previous_render()
+                    return None
+            elif key == 'ctrl_c':
                 self.clear_previous_render()
                 return None
+            elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+                self.filter_text += key
+                self._apply_filter()
 
 
 def main():

@@ -6,15 +6,18 @@ import msvcrt
 from terminaltreeview.app import DirectoryNavigator, TreeNode
 
 def test_navigator_initialization():
+    """Verify that the DirectoryNavigator can be initialized."""
     nav = DirectoryNavigator()
     assert nav.root_dir == os.getcwd()
     assert nav.initial_root == os.getcwd()
-    assert hasattr(nav, '_con_stream')
     assert not nav._con_stream.closed
     assert isinstance(nav.flat_list, list)
+    assert isinstance(nav.filtered_list, list)
     assert isinstance(nav.expanded_dirs, set)
 
+
 def test_navigator_lists_directories_and_files(tmp_path):
+    """Verify that both directories and files are listed, dirs first."""
     (tmp_path / "dir_b").mkdir()
     (tmp_path / "dir_a").mkdir()
     (tmp_path / "file_z.txt").touch()
@@ -25,6 +28,7 @@ def test_navigator_lists_directories_and_files(tmp_path):
     assert names == ["dir_a", "dir_b", "file_a.txt", "file_z.txt"]
 
 def test_navigator_hides_dot_dirs(tmp_path):
+    """Verify that hidden directories (starting with .) are excluded."""
     (tmp_path / ".hidden").mkdir()
     (tmp_path / "visible").mkdir()
 
@@ -34,6 +38,7 @@ def test_navigator_hides_dot_dirs(tmp_path):
     assert ".hidden" not in names
 
 def test_navigator_render_returns_text():
+    """Verify that the render method returns a Rich Text object."""
     from rich.text import Text
     nav = DirectoryNavigator()
     rendered = nav.render()
@@ -41,6 +46,7 @@ def test_navigator_render_returns_text():
     assert "📂" in str(rendered)
 
 def test_expand_directory(tmp_path):
+    """Verify that expanding a directory adds its children to the flat list."""
     (tmp_path / "parent").mkdir()
     (tmp_path / "parent" / "child_dir").mkdir()
     (tmp_path / "parent" / "child_file.txt").touch()
@@ -60,6 +66,7 @@ def test_expand_directory(tmp_path):
     assert parent_node.is_expanded
 
 def test_collapse_directory(tmp_path):
+    """Verify that collapsing a directory removes its children from the flat list."""
     (tmp_path / "parent").mkdir()
     (tmp_path / "parent" / "child").mkdir()
 
@@ -75,6 +82,7 @@ def test_collapse_directory(tmp_path):
     assert not any(n.name == "child" for n in nav.flat_list)
 
 def test_navigate_up_resets_root(tmp_path):
+    """Verify that navigating up above the initial root resets it."""
     sub = tmp_path / "sub"
     sub.mkdir()
 
@@ -85,6 +93,7 @@ def test_navigate_up_resets_root(tmp_path):
     assert nav.root_dir == str(tmp_path)
 
 def test_selection_path(tmp_path):
+    """Verify that selecting an item returns the correct absolute path."""
     (tmp_path / "target_dir").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     
@@ -92,17 +101,19 @@ def test_selection_path(tmp_path):
     assert nav.flat_list[idx].path == str((tmp_path / "target_dir").resolve())
 
 def test_navigator_expand_via_run(tmp_path, monkeypatch):
+    """Verify that pressing Enter on a directory expands it in-place."""
     (tmp_path / "subdir").mkdir()
     (tmp_path / "subdir" / "inner").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     nav.selected_index = 0
 
-    keys = iter([b'\r', b'q'])
+    keys = iter([b'\r', b'\x03'])
     monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
     nav.run()
     assert any(n.name == "inner" for n in nav.flat_list)
 
 def test_ctrl_enter_exits_with_path(tmp_path, monkeypatch):
+    """Verify CTRL+ENTER exits with the parent directory path."""
     (tmp_path / "target").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     nav.selected_index = 0 
@@ -113,6 +124,7 @@ def test_ctrl_enter_exits_with_path(tmp_path, monkeypatch):
     assert result == str(tmp_path)
 
 def test_shift_enter_exits_with_path(tmp_path, monkeypatch):
+    """Verify Shift+Enter exits with the selected directory path."""
     (tmp_path / "target").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     nav.selected_index = 0
@@ -127,18 +139,20 @@ def test_shift_enter_exits_with_path(tmp_path, monkeypatch):
     assert result == str((tmp_path / "target").resolve())
 
 def test_left_arrow_jumps_to_parent(tmp_path, monkeypatch):
+    """Verify left arrow jumps to parent node if unexpanded directory or file."""
     (tmp_path / "parent").mkdir()
     (tmp_path / "parent" / "child").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     nav._toggle_expand(nav.flat_list[0])
     nav.selected_index = 1
     
-    keys = iter([b'\x00', b'K', b'q'])
+    keys = iter([b'\x00', b'K', b'\x03'])
     monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
     nav.run()
     assert nav.selected_index == 0
 
 def test_viewport_shows_all_when_fits(tmp_path):
+    """When all items fit within visible height, no viewport is needed."""
     for i in range(5):
         (tmp_path / f"dir_{i}").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
@@ -148,6 +162,7 @@ def test_viewport_shows_all_when_fits(tmp_path):
     assert "more..." not in rendered
 
 def test_viewport_limits_output(tmp_path):
+    """When items exceed visible height, viewport limits which items render."""
     for i in range(30):
         (tmp_path / f"dir_{i:02d}").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
@@ -159,6 +174,7 @@ def test_viewport_limits_output(tmp_path):
     assert start <= nav.selected_index < end
 
 def test_viewport_scroll_indicators(tmp_path):
+    """Verify scroll indicators appear when items are hidden."""
     for i in range(30):
         (tmp_path / f"dir_{i:02d}").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
@@ -171,6 +187,7 @@ def test_viewport_scroll_indicators(tmp_path):
     assert "more..." in rendered
 
 def test_viewport_follows_selection(tmp_path):
+    """Moving selected_index shifts the viewport window."""
     for i in range(30):
         (tmp_path / f"dir_{i:02d}").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
@@ -185,12 +202,14 @@ def test_viewport_follows_selection(tmp_path):
     assert vp_top[0] != vp_bottom[0]
 
 def test_get_visible_height(tmp_path):
+    """Verify _get_visible_height returns a positive integer."""
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     height = nav._get_visible_height()
     assert isinstance(height, int)
     assert height > 0
 
 def test_dynamic_breadcrumb_shows_selected_path(tmp_path):
+    """Verify the breadcrumb shows the path of the currently selected item."""
     (tmp_path / "alpha").mkdir()
     (tmp_path / "beta").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
@@ -202,6 +221,7 @@ def test_dynamic_breadcrumb_shows_selected_path(tmp_path):
     assert str(tmp_path / "beta") in rendered
 
 def test_help_bar_is_rendered(tmp_path):
+    """Verify the help bar with keyboard shortcuts is always present."""
     (tmp_path / "folder").mkdir()
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     rendered = str(nav.render())
@@ -212,4 +232,24 @@ def test_help_bar_is_rendered(tmp_path):
     assert "Go Parent" in rendered
     assert "Shift+Enter" in rendered
     assert "Go Inside" in rendered
-    assert "Quit" in rendered
+    assert "Quit/Clear" in rendered
+
+def test_filtering(tmp_path, monkeypatch):
+    (tmp_path / "apple").mkdir()
+    (tmp_path / "banana").mkdir()
+    (tmp_path / "apricot").mkdir()
+    
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    assert len(nav.filtered_list) == 3
+    
+    # Type 'p', then quit
+    keys = iter([b'p', b'\x03'])
+    monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
+    nav.run()
+    
+    assert nav.filter_text == 'p'
+    assert len(nav.filtered_list) == 2
+    names = [n.name for n in nav.filtered_list]
+    assert "apple" in names
+    assert "apricot" in names
+    assert "banana" not in names
