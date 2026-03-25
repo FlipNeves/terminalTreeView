@@ -234,22 +234,19 @@ def test_help_bar_is_rendered(tmp_path):
     assert "Go Inside" in rendered
     assert "Quit/Clear" in rendered
 
-def test_filtering(tmp_path, monkeypatch):
+def test_filtering_jumps_to_item(tmp_path, monkeypatch):
     (tmp_path / "apple").mkdir()
     (tmp_path / "banana").mkdir()
     (tmp_path / "apricot").mkdir()
     
     nav = DirectoryNavigator(root_dir=str(tmp_path))
-    assert len(nav.filtered_list) == 3
+    assert len(nav.flat_list) == 3
     
-    # Type 'p', then quit
-    keys = iter([b'p', b'\x03'])
+    # Type 'b', then quit
+    keys = iter([b'b', b'\x03'])
     monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
     nav.run()
     
-    assert nav.filter_text == 'p'
-    assert len(nav.filtered_list) == 2
-    names = [n.name for n in nav.filtered_list]
-    assert "apple" in names
-    assert "apricot" in names
-    assert "banana" not in names
+    assert nav.filter_text == 'b'
+    assert len(nav.filtered_list) == 3
+    assert nav.selected_index == 2

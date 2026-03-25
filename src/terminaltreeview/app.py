@@ -97,14 +97,23 @@ class DirectoryNavigator:
         self._apply_filter()
 
     def _apply_filter(self):
+        self.filtered_list = self.flat_list[:]
         if not hasattr(self, 'filter_text') or not self.filter_text:
-            self.filtered_list = self.flat_list[:]
-        else:
-            lower_filter = self.filter_text.lower()
-            self.filtered_list = [n for n in self.flat_list if lower_filter in n.name.lower()]
+            if self.selected_index >= len(self.filtered_list):
+                self.selected_index = max(0, len(self.filtered_list) - 1)
+            return
+
+        lower_filter = self.filter_text.lower()
         
-        if self.selected_index >= len(self.filtered_list):
-            self.selected_index = max(0, len(self.filtered_list) - 1)
+        for i, node in enumerate(self.flat_list):
+            if node.name.lower().startswith(lower_filter):
+                self.selected_index = i
+                return
+                
+        for i, node in enumerate(self.flat_list):
+            if lower_filter in node.name.lower():
+                self.selected_index = i
+                return
 
     def _walk_dir(self, dir_path: str, depth: int):
         contents = self._list_dir_contents(dir_path)
@@ -301,6 +310,7 @@ class DirectoryNavigator:
             return None
 
     def _toggle_expand(self, node: TreeNode):
+        self.filter_text = ""
         if node.is_expanded:
             self._collapse_recursive(node.path)
         else:
@@ -314,6 +324,7 @@ class DirectoryNavigator:
             self.expanded_dirs.discard(p)
 
     def _navigate_up(self):
+        self.filter_text = ""
         parent = os.path.dirname(self.root_dir)
         if parent == self.root_dir:
             return  
