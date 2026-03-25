@@ -225,7 +225,8 @@ class DirectoryNavigator:
     def _compute_viewport(self, visible_height: int) -> tuple[int, int] | None:
         total = len(self.filtered_list)
         header_lines = 5
-        max_items = visible_height - header_lines
+        # Decrease standard view size to 12 items for a cleaner look
+        max_items = min(visible_height - header_lines, 12)
 
         if max_items <= 0:
             max_items = 1  
