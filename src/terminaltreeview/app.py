@@ -200,6 +200,8 @@ class DirectoryNavigator:
         output.append(" Go Inside  ", style="dim")
         output.append("← ", style="bold white")
         output.append("Back  ", style="dim")
+        output.append("Ctrl+O ", style="bold white")
+        output.append("Open  ", style="dim")
         output.append("Esc", style="bold white")
         output.append(" Quit/Clear", style="dim")
         output.append("\n")
@@ -303,6 +305,7 @@ class DirectoryNavigator:
         if ch == b'\x08': return 'backspace'
         if ch == b'\x1b': return 'escape'
         if ch == b'\x03': return 'ctrl_c'
+        if ch == b'\x0f': return 'ctrl_o'
         
         try:
             return ch.decode('utf-8')
@@ -400,6 +403,14 @@ class DirectoryNavigator:
             elif key == 'ctrl_c':
                 self.clear_previous_render()
                 return None
+            elif key == 'ctrl_o':
+                if len(self.filtered_list) > 0:
+                    node = self.filtered_list[self.selected_index]
+                    try:
+                        if hasattr(os, 'startfile'):
+                            os.startfile(node.path)
+                    except Exception:
+                        pass
             elif isinstance(key, str) and len(key) == 1 and key.isprintable():
                 self.filter_text += key
                 self._apply_filter()

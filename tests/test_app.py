@@ -232,6 +232,8 @@ def test_help_bar_is_rendered(tmp_path):
     assert "Go Parent" in rendered
     assert "Shift+Enter" in rendered
     assert "Go Inside" in rendered
+    assert "Ctrl+O" in rendered
+    assert "Open" in rendered
     assert "Quit/Clear" in rendered
 
 def test_filtering_jumps_to_item(tmp_path, monkeypatch):
@@ -250,3 +252,23 @@ def test_filtering_jumps_to_item(tmp_path, monkeypatch):
     assert nav.filter_text == 'b'
     assert len(nav.filtered_list) == 3
     assert nav.selected_index == 2
+
+def test_ctrl_o_opens_item(tmp_path, monkeypatch):
+    (tmp_path / "item.txt").touch()
+    
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    nav.selected_index = 0
+    
+    startfile_called = []
+    def mock_startfile(path):
+        startfile_called.append(path)
+        
+    monkeypatch.setattr(os, "startfile", mock_startfile, raising=False)
+    
+    # Type Ctrl+O, then quit
+    keys = iter([b'\x0f', b'\x03'])
+    monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
+    nav.run()
+    
+    assert len(startfile_called) == 1
+    assert "item.txt" in startfile_called[0]
