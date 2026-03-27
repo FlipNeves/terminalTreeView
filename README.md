@@ -18,6 +18,8 @@
   - `←`: Go to the parent directory (smart jumping).
   - `Ctrl + Enter`: Exit and open the terminal in the **parent** directory.
   - `Shift + Enter`: **Go Inside!** Exit and teleport your terminal into the selected directory.
+  - `Ctrl + O`: **Open file!** Use start command to open file.
+  - `Type letters`: **Filter** Filter all folders and files on the view.
 - **Rich Styling**: Beautiful colors and icons powered by the `rich` library.
 
 ---
