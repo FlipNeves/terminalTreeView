@@ -16,6 +16,18 @@ except AttributeError:
 VK_SHIFT = 0x10
 
 
+def _fuzzy_match(query: str, target: str) -> list[int] | None:
+    positions = []
+    qi = 0
+    for ti, ch in enumerate(target):
+        if qi < len(query) and ch == query[qi]:
+            positions.append(ti)
+            qi += 1
+            if qi == len(query):
+                return positions
+    return None
+
+
 class _COORD(ctypes.Structure):
     _fields_ = [("X", ctypes.wintypes.SHORT), ("Y", ctypes.wintypes.SHORT)]
 
@@ -66,6 +78,7 @@ class DirectoryNavigator:
         self.flat_list: list[TreeNode] = []
         self.filtered_list: list[TreeNode] = []
         self.filter_text = ""
+        self._match_positions: dict[int, list[int]] = {}
         self._rebuild_flat_list()
         self._render_start_y = None   
         self._render_line_count = 0
@@ -97,23 +110,23 @@ class DirectoryNavigator:
         self._apply_filter()
 
     def _apply_filter(self):
-        self.filtered_list = self.flat_list[:]
-        if not hasattr(self, 'filter_text') or not self.filter_text:
+        self._match_positions = {}
+        if not self.filter_text:
+            self.filtered_list = self.flat_list[:]
             if self.selected_index >= len(self.filtered_list):
                 self.selected_index = max(0, len(self.filtered_list) - 1)
             return
 
-        lower_filter = self.filter_text.lower()
-        
-        for i, node in enumerate(self.flat_list):
-            if node.name.lower().startswith(lower_filter):
-                self.selected_index = i
-                return
-                
-        for i, node in enumerate(self.flat_list):
-            if lower_filter in node.name.lower():
-                self.selected_index = i
-                return
+        query = self.filter_text.lower()
+        matches: list[TreeNode] = []
+        for node in self.flat_list:
+            positions = _fuzzy_match(query, node.name.lower())
+            if positions is not None:
+                matches.append(node)
+                self._match_positions[id(node)] = positions
+
+        self.filtered_list = matches
+        self.selected_index = 0
 
     def _walk_dir(self, dir_path: str, depth: int):
         contents = self._list_dir_contents(dir_path)
@@ -130,6 +143,18 @@ class DirectoryNavigator:
             self.flat_list.append(node)
             if is_dir and expanded:
                 self._walk_dir(full_path, depth + 1)
+
+    def _append_name(self, output: Text, node: TreeNode, base_style: str):
+        positions = self._match_positions.get(id(node))
+        if not positions:
+            output.append(node.name, style=base_style)
+            return
+        pos_set = set(positions)
+        for i, ch in enumerate(node.name):
+            if i in pos_set:
+                output.append(ch, style="bold underline yellow")
+            else:
+                output.append(ch, style=base_style)
 
     def render(self, viewport=None) -> Text:
         output = Text()
@@ -155,6 +180,9 @@ class DirectoryNavigator:
         if view_start > 0:
             output.append(f"    ↑ {view_start} more...\n", style="dim italic")
 
+        if self.filter_text and not self.filtered_list:
+            output.append("    (no matches)\n", style="dim italic")
+
         for i in range(view_start, view_end):
             node = self.filtered_list[i]
             is_selected = (i == self.selected_index)
@@ -174,11 +202,11 @@ class DirectoryNavigator:
                 output.append(arrow, style=base_style)
                 icon = "📂 " if node.is_expanded else "📁 "
                 output.append(icon, style="")
-                output.append(node.name, style=base_style)
+                self._append_name(output, node, base_style)
             else:
-                output.append("  ", style="")  
+                output.append("  ", style="")
                 output.append("M⁺ ", style="green" if not is_selected else "bold cyan")
-                output.append(node.name, style=base_style)
+                self._append_name(output, node, base_style)
 
             output.append("\n")
 
@@ -188,7 +216,9 @@ class DirectoryNavigator:
 
         output.append("\n")
         if self.filter_text:
-            output.append(f"  Filter: {self.filter_text}\n\n", style="bold yellow")
+            count = len(self.filtered_list)
+            total = len(self.flat_list)
+            output.append(f"  Filter: {self.filter_text}  ({count}/{total})\n\n", style="bold yellow")
             
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
