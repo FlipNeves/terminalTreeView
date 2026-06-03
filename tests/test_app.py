@@ -236,22 +236,66 @@ def test_help_bar_is_rendered(tmp_path):
     assert "Open" in rendered
     assert "Quit/Clear" in rendered
 
-def test_filtering_jumps_to_item(tmp_path, monkeypatch):
+def test_filtering_hides_non_matches(tmp_path, monkeypatch):
     (tmp_path / "apple").mkdir()
     (tmp_path / "banana").mkdir()
     (tmp_path / "apricot").mkdir()
-    
+
     nav = DirectoryNavigator(root_dir=str(tmp_path))
     assert len(nav.flat_list) == 3
-    
-    # Type 'b', then quit
+
     keys = iter([b'b', b'\x03'])
     monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
     nav.run()
-    
+
     assert nav.filter_text == 'b'
-    assert len(nav.filtered_list) == 3
-    assert nav.selected_index == 2
+    assert [n.name for n in nav.filtered_list] == ['banana']
+    assert nav.selected_index == 0
+
+
+def test_fuzzy_filter_matches_subsequence(tmp_path, monkeypatch):
+    (tmp_path / "test_app.py").touch()
+    (tmp_path / "apple").mkdir()
+    (tmp_path / "trash_panda.txt").touch()
+
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+
+    keys = iter([b't', b's', b't', b'\x03'])
+    monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
+    nav.run()
+
+    assert nav.filter_text == 'tst'
+    names = [n.name for n in nav.filtered_list]
+    assert "test_app.py" in names
+    assert "apple" not in names
+
+
+def test_filter_with_no_matches_yields_empty_list(tmp_path, monkeypatch):
+    (tmp_path / "apple").mkdir()
+
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+
+    keys = iter([b'z', b'\x03'])
+    monkeypatch.setattr("msvcrt.getch", lambda: next(keys))
+    nav.run()
+
+    assert nav.filter_text == 'z'
+    assert nav.filtered_list == []
+    rendered = str(nav.render())
+    assert "(no matches)" in rendered
+
+
+def test_filter_header_shows_count(tmp_path):
+    (tmp_path / "apple").mkdir()
+    (tmp_path / "banana").mkdir()
+    (tmp_path / "apricot").mkdir()
+
+    nav = DirectoryNavigator(root_dir=str(tmp_path))
+    nav.filter_text = "ap"
+    nav._apply_filter()
+    rendered = str(nav.render())
+    assert "Filter: ap" in rendered
+    assert "(2/3)" in rendered
 
 def test_ctrl_o_opens_item(tmp_path, monkeypatch):
     (tmp_path / "item.txt").touch()

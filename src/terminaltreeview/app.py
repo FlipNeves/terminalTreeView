@@ -16,6 +16,18 @@ except AttributeError:
 VK_SHIFT = 0x10
 
 
+def _fuzzy_match(query: str, target: str) -> list[int] | None:
+    positions = []
+    qi = 0
+    for ti, ch in enumerate(target):
+        if qi < len(query) and ch == query[qi]:
+            positions.append(ti)
+            qi += 1
+            if qi == len(query):
+                return positions
+    return None
+
+
 class _COORD(ctypes.Structure):
     _fields_ = [("X", ctypes.wintypes.SHORT), ("Y", ctypes.wintypes.SHORT)]
 
@@ -66,6 +78,11 @@ class DirectoryNavigator:
         self.flat_list: list[TreeNode] = []
         self.filtered_list: list[TreeNode] = []
         self.filter_text = ""
+        self._match_positions: dict[int, list[int]] = {}
+        self.creating = False
+        self.create_parent: str | None = None
+        self.new_folder_name = ""
+        self.create_error = ""
         self._rebuild_flat_list()
         self._render_start_y = None   
         self._render_line_count = 0
@@ -97,23 +114,23 @@ class DirectoryNavigator:
         self._apply_filter()
 
     def _apply_filter(self):
-        self.filtered_list = self.flat_list[:]
-        if not hasattr(self, 'filter_text') or not self.filter_text:
+        self._match_positions = {}
+        if not self.filter_text:
+            self.filtered_list = self.flat_list[:]
             if self.selected_index >= len(self.filtered_list):
                 self.selected_index = max(0, len(self.filtered_list) - 1)
             return
 
-        lower_filter = self.filter_text.lower()
-        
-        for i, node in enumerate(self.flat_list):
-            if node.name.lower().startswith(lower_filter):
-                self.selected_index = i
-                return
-                
-        for i, node in enumerate(self.flat_list):
-            if lower_filter in node.name.lower():
-                self.selected_index = i
-                return
+        query = self.filter_text.lower()
+        matches: list[TreeNode] = []
+        for node in self.flat_list:
+            positions = _fuzzy_match(query, node.name.lower())
+            if positions is not None:
+                matches.append(node)
+                self._match_positions[id(node)] = positions
+
+        self.filtered_list = matches
+        self.selected_index = 0
 
     def _walk_dir(self, dir_path: str, depth: int):
         contents = self._list_dir_contents(dir_path)
@@ -130,6 +147,18 @@ class DirectoryNavigator:
             self.flat_list.append(node)
             if is_dir and expanded:
                 self._walk_dir(full_path, depth + 1)
+
+    def _append_name(self, output: Text, node: TreeNode, base_style: str):
+        positions = self._match_positions.get(id(node))
+        if not positions:
+            output.append(node.name, style=base_style)
+            return
+        pos_set = set(positions)
+        for i, ch in enumerate(node.name):
+            if i in pos_set:
+                output.append(ch, style="bold underline yellow")
+            else:
+                output.append(ch, style=base_style)
 
     def render(self, viewport=None) -> Text:
         output = Text()
@@ -155,6 +184,9 @@ class DirectoryNavigator:
         if view_start > 0:
             output.append(f"    ↑ {view_start} more...\n", style="dim italic")
 
+        if self.filter_text and not self.filtered_list:
+            output.append("    (no matches)\n", style="dim italic")
+
         for i in range(view_start, view_end):
             node = self.filtered_list[i]
             is_selected = (i == self.selected_index)
@@ -174,11 +206,11 @@ class DirectoryNavigator:
                 output.append(arrow, style=base_style)
                 icon = "📂 " if node.is_expanded else "📁 "
                 output.append(icon, style="")
-                output.append(node.name, style=base_style)
+                self._append_name(output, node, base_style)
             else:
-                output.append("  ", style="")  
+                output.append("  ", style="")
                 output.append("M⁺ ", style="green" if not is_selected else "bold cyan")
-                output.append(node.name, style=base_style)
+                self._append_name(output, node, base_style)
 
             output.append("\n")
 
@@ -187,9 +219,24 @@ class DirectoryNavigator:
             output.append(f"    ↓ {remaining} more...\n", style="dim italic")
 
         output.append("\n")
+        if self.creating:
+            output.append(f"  New folder in {self.create_parent}\n", style="dim")
+            output.append("  📁 ", style="")
+            output.append(f"{self.new_folder_name}", style="bold green")
+            output.append("█\n", style="bold green")
+            if self.create_error:
+                output.append(f"  {self.create_error}\n", style="bold red")
+            output.append("  Enter", style="bold white")
+            output.append(" Create  ", style="dim")
+            output.append("Esc", style="bold white")
+            output.append(" Cancel\n", style="dim")
+            return output
+
         if self.filter_text:
-            output.append(f"  Filter: {self.filter_text}\n\n", style="bold yellow")
-            
+            count = len(self.filtered_list)
+            total = len(self.flat_list)
+            output.append(f"  Filter: {self.filter_text}  ({count}/{total})\n\n", style="bold yellow")
+
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
         output.append("Enter/→", style="bold white")
@@ -202,6 +249,8 @@ class DirectoryNavigator:
         output.append("Back  ", style="dim")
         output.append("Ctrl+O ", style="bold white")
         output.append("Open  ", style="dim")
+        output.append("Ctrl+N ", style="bold white")
+        output.append("New Folder  ", style="dim")
         output.append("Esc", style="bold white")
         output.append(" Quit/Clear", style="dim")
         output.append("\n")
@@ -307,6 +356,7 @@ class DirectoryNavigator:
         if ch == b'\x1b': return 'escape'
         if ch == b'\x03': return 'ctrl_c'
         if ch == b'\x0f': return 'ctrl_o'
+        if ch == b'\x0e': return 'ctrl_n'
         
         try:
             return ch.decode('utf-8')
@@ -314,12 +364,58 @@ class DirectoryNavigator:
             return None
 
     def _toggle_expand(self, node: TreeNode):
+        target_path = node.path
         self.filter_text = ""
         if node.is_expanded:
             self._collapse_recursive(node.path)
         else:
             self.expanded_dirs.add(node.path)
         self._rebuild_flat_list()
+        self._select_path(target_path)
+
+    def _select_path(self, path: str):
+        for i, node in enumerate(self.filtered_list):
+            if node.path == path:
+                self.selected_index = i
+                return
+
+    def _begin_create(self):
+        if self.filtered_list and 0 <= self.selected_index < len(self.filtered_list):
+            node = self.filtered_list[self.selected_index]
+            parent = node.path if node.is_dir else os.path.dirname(node.path)
+        else:
+            parent = self.root_dir
+        self.creating = True
+        self.create_parent = parent
+        self.new_folder_name = ""
+        self.create_error = ""
+
+    def _cancel_create(self):
+        self.creating = False
+        self.new_folder_name = ""
+        self.create_error = ""
+
+    def _confirm_create(self):
+        name = self.new_folder_name.strip()
+        if not name:
+            self._cancel_create()
+            return
+        target = os.path.join(self.create_parent, name)
+        try:
+            os.makedirs(target, exist_ok=False)
+        except FileExistsError:
+            self.create_error = "Já existe uma pasta com esse nome."
+            return
+        except OSError as e:
+            self.create_error = f"Não foi possível criar: {e.strerror or e}"
+            return
+
+        self.filter_text = ""
+        if self.create_parent != self.root_dir:
+            self.expanded_dirs.add(self.create_parent)
+        self._rebuild_flat_list()
+        self._select_path(target)
+        self._cancel_create()
 
     def _collapse_recursive(self, dir_path: str):
         self.expanded_dirs.discard(dir_path)
@@ -348,6 +444,22 @@ class DirectoryNavigator:
             self._print_and_track(rendered)
 
             key = self.get_key()
+
+            if self.creating:
+                if key == 'enter':
+                    self._confirm_create()
+                elif key == 'escape':
+                    self._cancel_create()
+                elif key == 'backspace':
+                    self.new_folder_name = self.new_folder_name[:-1]
+                    self.create_error = ""
+                elif key == 'ctrl_c':
+                    self.clear_previous_render()
+                    return None
+                elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+                    self.new_folder_name += key
+                    self.create_error = ""
+                continue
 
             if key == 'up':
                 if len(self.filtered_list) > 0:
@@ -412,6 +524,8 @@ class DirectoryNavigator:
                             os.startfile(node.path)
                     except Exception:
                         pass
+            elif key == 'ctrl_n':
+                self._begin_create()
             elif isinstance(key, str) and len(key) == 1 and key.isprintable():
                 self.filter_text += key
                 self._apply_filter()
@@ -422,15 +536,18 @@ def main():
         shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
         if shell == "powershell":
             print(
-                "function ttv { "
-                "$target = ttv-tool @args; "
-                "if ($target -and (Test-Path -Path $target)) { Set-Location -Path \"$target\" } "
+                "function ttv {\n"
+                "    $target = ttv-tool @args | Select-Object -Last 1\n"
+                "    if ($target) {\n"
+                "        $target = \"$target\".Trim()\n"
+                "        if ($target -and (Test-Path -LiteralPath $target -PathType Container)) {\n"
+                "            Set-Location -LiteralPath $target\n"
+                "        }\n"
+                "    }\n"
                 "}"
             )
         elif shell == "cmd":
-            print("To use ttv in CMD, create a ttv.bat file in your PATH with:\n"
-                  "@echo off\n"
-                  "for /f \"tokens=*\" %%i in ('ttv-tool %*') do cd /d \"%%i\"")
+            print("Run 'ttv-setup' to install a ttv.bat shim on your PATH automatically.")
         return
 
     nav = DirectoryNavigator()
