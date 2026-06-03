@@ -39,7 +39,7 @@ To allow `terminaltreeview` to change your terminal's directory (the "Teleport" 
 ttv-setup
 ```
 > [!TIP]
-> This command automatically configures your PowerShell profile. After running it, simply **restart your terminal** or run `. $PROFILE`.
+> This command automatically configures every shell it detects — PowerShell 7 (`pwsh`), Windows PowerShell 5.1, and CMD (via a `ttv.bat` shim on your PATH). After running it, simply **restart your terminal** or run `. $PROFILE`.
 
 ### 3. Start Navigating
 Now just type `ttv` from anywhere:

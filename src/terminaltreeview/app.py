@@ -460,15 +460,18 @@ def main():
         shell = sys.argv[2] if len(sys.argv) > 2 else "powershell"
         if shell == "powershell":
             print(
-                "function ttv { "
-                "$target = ttv-tool @args; "
-                "if ($target -and (Test-Path -Path $target)) { Set-Location -Path \"$target\" } "
+                "function ttv {\n"
+                "    $target = ttv-tool @args | Select-Object -Last 1\n"
+                "    if ($target) {\n"
+                "        $target = \"$target\".Trim()\n"
+                "        if ($target -and (Test-Path -LiteralPath $target -PathType Container)) {\n"
+                "            Set-Location -LiteralPath $target\n"
+                "        }\n"
+                "    }\n"
                 "}"
             )
         elif shell == "cmd":
-            print("To use ttv in CMD, create a ttv.bat file in your PATH with:\n"
-                  "@echo off\n"
-                  "for /f \"tokens=*\" %%i in ('ttv-tool %*') do cd /d \"%%i\"")
+            print("Run 'ttv-setup' to install a ttv.bat shim on your PATH automatically.")
         return
 
     nav = DirectoryNavigator()
