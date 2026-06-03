@@ -344,12 +344,20 @@ class DirectoryNavigator:
             return None
 
     def _toggle_expand(self, node: TreeNode):
+        target_path = node.path
         self.filter_text = ""
         if node.is_expanded:
             self._collapse_recursive(node.path)
         else:
             self.expanded_dirs.add(node.path)
         self._rebuild_flat_list()
+        self._select_path(target_path)
+
+    def _select_path(self, path: str):
+        for i, node in enumerate(self.filtered_list):
+            if node.path == path:
+                self.selected_index = i
+                return
 
     def _collapse_recursive(self, dir_path: str):
         self.expanded_dirs.discard(dir_path)
