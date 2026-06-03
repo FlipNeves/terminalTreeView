@@ -79,6 +79,10 @@ class DirectoryNavigator:
         self.filtered_list: list[TreeNode] = []
         self.filter_text = ""
         self._match_positions: dict[int, list[int]] = {}
+        self.creating = False
+        self.create_parent: str | None = None
+        self.new_folder_name = ""
+        self.create_error = ""
         self._rebuild_flat_list()
         self._render_start_y = None   
         self._render_line_count = 0
@@ -215,11 +219,24 @@ class DirectoryNavigator:
             output.append(f"    ↓ {remaining} more...\n", style="dim italic")
 
         output.append("\n")
+        if self.creating:
+            output.append(f"  New folder in {self.create_parent}\n", style="dim")
+            output.append("  📁 ", style="")
+            output.append(f"{self.new_folder_name}", style="bold green")
+            output.append("█\n", style="bold green")
+            if self.create_error:
+                output.append(f"  {self.create_error}\n", style="bold red")
+            output.append("  Enter", style="bold white")
+            output.append(" Create  ", style="dim")
+            output.append("Esc", style="bold white")
+            output.append(" Cancel\n", style="dim")
+            return output
+
         if self.filter_text:
             count = len(self.filtered_list)
             total = len(self.flat_list)
             output.append(f"  Filter: {self.filter_text}  ({count}/{total})\n\n", style="bold yellow")
-            
+
         output.append("  ↑↓", style="bold white")
         output.append(" Navigate  ", style="dim")
         output.append("Enter/→", style="bold white")
@@ -232,6 +249,8 @@ class DirectoryNavigator:
         output.append("Back  ", style="dim")
         output.append("Ctrl+O ", style="bold white")
         output.append("Open  ", style="dim")
+        output.append("Ctrl+N ", style="bold white")
+        output.append("New Folder  ", style="dim")
         output.append("Esc", style="bold white")
         output.append(" Quit/Clear", style="dim")
         output.append("\n")
@@ -337,6 +356,7 @@ class DirectoryNavigator:
         if ch == b'\x1b': return 'escape'
         if ch == b'\x03': return 'ctrl_c'
         if ch == b'\x0f': return 'ctrl_o'
+        if ch == b'\x0e': return 'ctrl_n'
         
         try:
             return ch.decode('utf-8')
@@ -358,6 +378,44 @@ class DirectoryNavigator:
             if node.path == path:
                 self.selected_index = i
                 return
+
+    def _begin_create(self):
+        if self.filtered_list and 0 <= self.selected_index < len(self.filtered_list):
+            node = self.filtered_list[self.selected_index]
+            parent = node.path if node.is_dir else os.path.dirname(node.path)
+        else:
+            parent = self.root_dir
+        self.creating = True
+        self.create_parent = parent
+        self.new_folder_name = ""
+        self.create_error = ""
+
+    def _cancel_create(self):
+        self.creating = False
+        self.new_folder_name = ""
+        self.create_error = ""
+
+    def _confirm_create(self):
+        name = self.new_folder_name.strip()
+        if not name:
+            self._cancel_create()
+            return
+        target = os.path.join(self.create_parent, name)
+        try:
+            os.makedirs(target, exist_ok=False)
+        except FileExistsError:
+            self.create_error = "Já existe uma pasta com esse nome."
+            return
+        except OSError as e:
+            self.create_error = f"Não foi possível criar: {e.strerror or e}"
+            return
+
+        self.filter_text = ""
+        if self.create_parent != self.root_dir:
+            self.expanded_dirs.add(self.create_parent)
+        self._rebuild_flat_list()
+        self._select_path(target)
+        self._cancel_create()
 
     def _collapse_recursive(self, dir_path: str):
         self.expanded_dirs.discard(dir_path)
@@ -386,6 +444,22 @@ class DirectoryNavigator:
             self._print_and_track(rendered)
 
             key = self.get_key()
+
+            if self.creating:
+                if key == 'enter':
+                    self._confirm_create()
+                elif key == 'escape':
+                    self._cancel_create()
+                elif key == 'backspace':
+                    self.new_folder_name = self.new_folder_name[:-1]
+                    self.create_error = ""
+                elif key == 'ctrl_c':
+                    self.clear_previous_render()
+                    return None
+                elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+                    self.new_folder_name += key
+                    self.create_error = ""
+                continue
 
             if key == 'up':
                 if len(self.filtered_list) > 0:
@@ -450,6 +524,8 @@ class DirectoryNavigator:
                             os.startfile(node.path)
                     except Exception:
                         pass
+            elif key == 'ctrl_n':
+                self._begin_create()
             elif isinstance(key, str) and len(key) == 1 and key.isprintable():
                 self.filter_text += key
                 self._apply_filter()

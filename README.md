@@ -19,6 +19,7 @@
   - `Ctrl + Enter`: Exit and open the terminal in the **parent** directory.
   - `Shift + Enter`: **Go Inside!** Exit and teleport your terminal into the selected directory.
   - `Ctrl + O`: **Open file!** Use start command to open file.
+  - `Ctrl + N`: **New folder!** Create and name a folder inside the selected directory.
   - `Type letters`: **Filter** Filter all folders and files on the view.
 - **Rich Styling**: Beautiful colors and icons powered by the `rich` library.
 
@@ -58,6 +59,8 @@ ttv
 | `←` | Collapse folder or jump to Parent |
 | `Ctrl + Enter` | Open shell at current selection level |
 | `Shift + Enter` | **Open shell inside selected folder** |
+| `Ctrl + O` | Open the selected item |
+| `Ctrl + N` | Create a new folder in the selected directory |
 | `Q` / `Ctrl + C` | Quit |
 
 ---
