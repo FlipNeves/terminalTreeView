@@ -1,6 +1,6 @@
 [project]
 name = "terminaltreeview"
-version = "0.3.0"
+version = "0.4.0"
 description = "An interactive terminal directory navigator for Windows."
 authors = [
     { name = "FlipNeves" }
