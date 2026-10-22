@@ -3,6 +3,7 @@ from rich.text import Text
 
 from terminaltreeview import config as cfgmod
 from terminaltreeview import keys as keymod
+from terminaltreeview.layout import clip_start, compute_window, list_rows
 
 
 class SettingsScreen:
@@ -202,66 +203,59 @@ class SettingsScreen:
             return str(value)
         return t(f"value_{ref.id}.{value}")
 
-    def _hints(self) -> list[tuple[str, str]]:
+    def _hints(self) -> list[list[tuple[str, str]]]:
         t = self.nav.t
         if self.capture:
-            return [("Esc", t("hint_cancel"))]
+            return [[("Esc", t("hint_cancel"))]]
         kind = self.rows[self.index][0]
-        hints = [("↑↓", t("help_navigate"))]
+        hints = [[("↑↓", t("help_navigate"))]]
         if kind == "option":
-            hints += [("←→", t("settings_change")), ("R", t("settings_default"))]
+            hints.append([("←→", t("settings_change")), ("R", t("settings_default"))])
         elif kind == "key":
-            hints += [("Enter", t("settings_set_key")), ("+", t("settings_add_key")),
-                      ("Del", t("settings_clear_key")), ("R", t("settings_default"))]
+            hints.append([("Enter", t("settings_set_key")), ("+", t("settings_add_key")),
+                          ("Del", t("settings_clear_key")), ("R", t("settings_default"))])
         elif kind == "reset":
-            hints.append(("Enter", t("settings_confirm")))
-        hints.append(("Esc", t("settings_back")))
+            hints.append([("Enter", t("settings_confirm"))])
+        hints.append([("Esc", t("settings_back"))])
         return hints
 
-    def chrome_lines(self) -> int:
-        lines = 4 + (1 if self.nav.config.path else 0)
-        if self.capture or self.message:
-            lines += 1
-        return lines + len(self.nav._hint_lines(self._hints()))
-
-    def render(self, viewport=None) -> Text:
+    def screen(self, width: int, height: int) -> tuple[str, list[Text], list[Text]]:
         nav, t, styles = self.nav, self.nav.t, self.nav.styles
-        output = Text()
-        output.append(f"  ⚙ {t('settings_title')}\n", style=styles["root"])
-        if nav.config.path:
-            output.append(f"  {nav.config.path}\n", style=styles["path"])
+        footer = []
+        if self.capture:
+            prompt = "capture_add" if self.capture == "add" else "capture_set"
+            footer.append(Text(t(prompt, action=self._action_label(self.rows[self.index][1])),
+                               style=styles["message"]))
+        elif self.message:
+            footer += nav._message_lines(self.message, width)
+        footer += nav._hint_texts(self._hints(), width)
 
-        start, end = viewport if viewport is not None else (0, len(self.rows))
+        body = []
+        if nav.config.path:
+            body.append(Text(clip_start(nav.config.path, width), style=styles["path"]))
+        window = compute_window(len(self.rows), self.index, list_rows(height, len(body), footer))
+        start, end = window if window is not None else (0, len(self.rows))
         if start > 0:
-            output.append("    " + t("more_above", n=start) + "\n", style=styles["info"])
-        width = max(cell_len(self._label(kind, ref)) for kind, ref in self.rows if kind in ("option", "key"))
+            body.append(Text("  " + t("more_above", n=start), style=styles["info"]))
+        label_width = max(cell_len(self._label(kind, ref)) for kind, ref in self.rows if kind in ("option", "key"))
         for i in range(start, end):
             kind, ref = self.rows[i]
             if kind == "header":
-                output.append(f"    {t('section_' + ref).upper()}\n", style=styles["header"])
+                body.append(Text(f"  {t('section_' + ref).upper()}", style=styles["header"]))
                 continue
             selected = i == self.index
             style = styles["selected"] if selected else styles["name"]
             label = self._label(kind, ref)
-            output.append("  › " if selected else "    ", style=style)
-            output.append(label, style=style)
+            line = Text()
+            line.append("› " if selected else "  ", style=style)
+            line.append(label, style=style)
             if kind != "reset":
-                output.append(" " * (width - cell_len(label) + 2))
+                line.append(" " * (label_width - cell_len(label) + 2))
                 value = self._value(kind, ref)
                 if selected and kind == "option":
                     value = f"‹ {value} ›"
-                output.append(value, style=style if selected else styles["value"])
-            output.append("\n")
+                line.append(value, style=style if selected else styles["value"])
+            body.append(line)
         if end < len(self.rows):
-            output.append("    " + t("more_below", n=len(self.rows) - end) + "\n", style=styles["info"])
-
-        output.append("\n")
-        if self.capture:
-            prompt = "capture_add" if self.capture == "add" else "capture_set"
-            output.append("  " + t(prompt, action=self._action_label(self.rows[self.index][1])) + "\n",
-                          style=styles["message"])
-        elif self.message:
-            text, kind = self.message
-            output.append(f"  {text}\n", style=styles.get(kind, styles["message"]))
-        nav._append_hints(output, self._hints())
-        return output
+            body.append(Text("  " + t("more_below", n=len(self.rows) - end), style=styles["info"]))
+        return f"⚙ {t('settings_title')}", body, footer

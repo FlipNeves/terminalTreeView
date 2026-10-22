@@ -15,7 +15,7 @@ SEARCH_SCOPES = ("screen", "folder")
 MATCH_MODES = ("fuzzy", "contains", "prefix")
 ICON_SETS = ("emoji", "ascii", "none")
 HELP_BARS = ("full", "compact", "hidden")
-THEMES = ("default", "classic", "mono")
+THEMES = ("default", "vivid", "classic", "mono")
 LANGUAGE_CHOICES = ("auto", "pt", "en")
 
 ACTIONS = (
@@ -47,8 +47,8 @@ DEFAULT_KEYS = {
 REQUIRED_ACTIONS = ("settings", "quit")
 
 STYLE_NAMES = (
-    "path", "root", "name", "selected", "match", "info", "note", "filter",
-    "key", "hint", "error", "ok", "header", "value", "message",
+    "path", "root", "folder", "name", "selected", "match", "info", "note", "filter",
+    "key", "hint", "error", "ok", "header", "value", "message", "border",
 )
 
 DEFAULT_SKIP = ("node_modules", ".git", "__pycache__", ".venv", "venv")
@@ -82,7 +82,6 @@ OPTIONS = (
     Option("search", "match", "choice", MATCH_MODES),
     Option("files", "show_hidden", "bool"),
     Option("files", "dirs_only", "bool"),
-    Option("layout", "max_items", "int", low=3, high=50),
     Option("layout", "icons", "choice", ICON_SETS),
     Option("layout", "help_bar", "choice", HELP_BARS),
     Option("layout", "show_path", "bool"),
@@ -90,6 +89,7 @@ OPTIONS = (
     Option("layout", "language", "choice", LANGUAGE_CHOICES),
 )
 OPTION_BY_ID = {option.id: option for option in OPTIONS}
+RETIRED_OPTIONS = frozenset({"layout.max_items"})
 SECTIONS = ("search", "files", "layout")
 
 
@@ -110,7 +110,6 @@ class FileSettings:
 
 @dataclass
 class LayoutSettings:
-    max_items: int = 12
     icons: str = "emoji"
     help_bar: str = "full"
     show_path: bool = True
@@ -203,7 +202,8 @@ def _apply(config: Config, data: dict):
                 continue
             option = OPTION_BY_ID.get(f"{section}.{name}")
             if option is None:
-                warnings.append(("warn_unknown", {"name": f"{section}.{name}"}))
+                if f"{section}.{name}" not in RETIRED_OPTIONS:
+                    warnings.append(("warn_unknown", {"name": f"{section}.{name}"}))
             elif option.accepts(value):
                 config.set(option.id, value)
             else:

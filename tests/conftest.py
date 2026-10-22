@@ -19,5 +19,7 @@ def make_nav():
         for option_id, value in options.items():
             config.set(option_id.replace("__", "."), value)
         source = iter(keys).__next__ if keys is not None else None
-        return DirectoryNavigator(root_dir=str(root), config=config, key_source=source)
+        nav = DirectoryNavigator(root_dir=str(root), config=config, key_source=source)
+        nav._get_window_size = lambda: (200, 40)
+        return nav
     return make

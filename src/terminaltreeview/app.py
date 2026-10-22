@@ -15,11 +15,17 @@ from terminaltreeview import config as cfgmod
 from terminaltreeview import fs
 from terminaltreeview import keys as keymod
 from terminaltreeview.i18n import Translator
+from terminaltreeview.layout import (
+    BOXES, MIN_HEIGHT, MIN_WIDTH, boxed, centered, clip_start, compute_window, list_rows,
+)
 from terminaltreeview.search import match
 from terminaltreeview.settings_screen import SettingsScreen
 
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 _kernel32 = ctypes.windll.kernel32
+
+_ENTER_SCREEN = "\x1b[?1049h\x1b[?25l\x1b[?7l"
+_LEAVE_SCREEN = "\x1b[?7h\x1b[?25h\x1b[?1049l"
 
 DEEP_SEARCH_LIMIT = 20000
 
@@ -30,22 +36,32 @@ EXECUTABLE_EXTENSIONS = frozenset({
 
 STYLES = {
     "default": {
-        "path": "dim", "root": "bold blue", "name": "", "selected": "bold cyan",
+        "path": "dim", "root": "bold blue", "folder": "bold bright_white", "name": "", "selected": "bold cyan",
         "match": "bold underline yellow", "info": "dim italic", "note": "dim",
         "filter": "bold yellow", "key": "bold", "hint": "dim", "error": "bold red",
         "ok": "bold green", "header": "bold", "value": "cyan", "message": "yellow",
+        "border": "dim",
+    },
+    "vivid": {
+        "path": "#7dcfff", "root": "bold #7dcfff", "folder": "bold #7aa2f7", "name": "#c0caf5",
+        "selected": "bold #7dcfff", "match": "bold underline #e0af68",
+        "info": "italic #737aa2", "note": "italic #737aa2", "filter": "bold #e0af68",
+        "key": "bold #bb9af7", "hint": "#a9b1d6", "error": "bold #f7768e", "ok": "bold #9ece6a",
+        "header": "bold #bb9af7", "value": "#9ece6a", "message": "#e0af68", "border": "#7aa2f7",
     },
     "classic": {
-        "path": "dim", "root": "bold blue", "name": "white", "selected": "bold cyan",
-        "match": "bold underline yellow", "info": "dim italic", "note": "dim",
+        "path": "dim", "root": "bold blue", "folder": "bold bright_white", "name": "white",
+        "selected": "bold cyan", "match": "bold underline yellow", "info": "dim italic", "note": "dim",
         "filter": "bold yellow", "key": "bold white", "hint": "dim", "error": "bold red",
         "ok": "bold green", "header": "bold white", "value": "cyan", "message": "yellow",
+        "border": "blue",
     },
     "mono": {
-        "path": "dim", "root": "bold", "name": "", "selected": "reverse",
+        "path": "dim", "root": "bold", "folder": "bold", "name": "", "selected": "reverse",
         "match": "underline", "info": "dim italic", "note": "dim",
         "filter": "bold", "key": "bold", "hint": "dim", "error": "bold",
         "ok": "bold", "header": "bold", "value": "", "message": "bold",
+        "border": "",
     },
 }
 
@@ -55,8 +71,13 @@ ICONS = {
     "ascii": {"open": "- ", "closed": "+ ", "dir_open": "", "dir": "", "file": "", "root": "", "dir_suffix": "\\"},
 }
 
-HELP_FULL = ("nav", "expand", "go_here", "go_inside", "back", "open", "new_folder", "toggle_hidden", "settings", "cancel")
-HELP_COMPACT = ("nav", "expand", "go_inside", "settings", "cancel")
+HELP_GROUPS = (
+    ("nav", "expand", "back"),
+    ("go_here", "go_inside"),
+    ("open", "new_folder"),
+    ("toggle_hidden", "settings", "cancel"),
+)
+HELP_COMPACT = frozenset({"nav", "expand", "go_inside", "settings", "cancel"})
 
 _CONTINUE = object()
 
@@ -65,22 +86,6 @@ def build_styles(theme: str, overrides: dict) -> dict:
     styles = dict(STYLES.get(theme, STYLES["default"]))
     styles.update(overrides)
     return styles
-
-
-def compute_window(total: int, selected: int, budget: int) -> tuple[int, int] | None:
-    budget = max(1, budget)
-    if total <= budget:
-        return None
-    selected = min(max(selected, 0), total - 1)
-    items = budget
-    for _ in range(4):
-        start = min(max(0, selected - items // 2), total - items)
-        fits = budget - (1 if start > 0 else 0) - (1 if start + items < total else 0)
-        if fits >= items:
-            break
-        items = max(1, fits)
-    start = min(max(0, selected - items // 2), total - items)
-    return start, start + items
 
 
 class _COORD(ctypes.Structure):
@@ -164,13 +169,15 @@ class DirectoryNavigator:
         self.apply_config()
         self._announce_config_warnings()
         self._rebuild_flat_list()
-        self._render_start_y = None
-        self._render_line_count = 0
+        self._page_rows = 10
+        self._too_small = False
+        self._drawn_size: tuple[int, int] | None = None
 
     def apply_config(self, changed: str | None = None):
         self.t = Translator(self.config.layout.language)
         self.styles = build_styles(self.config.layout.theme, self.config.colors)
         self.icons = ICONS.get(self.config.layout.icons, ICONS["emoji"])
+        self.box = BOXES["ascii" if self.config.layout.icons == "ascii" else "rounded"]
         self.keymap = self.config.keymap()
         if changed in ("files.show_hidden", "reset"):
             self.show_hidden = self.config.files.show_hidden
@@ -343,32 +350,34 @@ class DirectoryNavigator:
             return self.t("note_error", error=detail or "?")
         return self.t(f"note_{note}")
 
-    def _append_tree_row(self, output: Text, node: TreeNode, style: str):
+    def _tree_row(self, node: TreeNode, style: str) -> Text:
         icons = self.icons
-        output.append("    " + "    " * node.depth)
+        line = Text("  " + "    " * node.depth)
         if node.is_dir:
-            output.append(icons["open"] if node.is_expanded else icons["closed"], style=style)
-            output.append(icons["dir_open"] if node.is_expanded else icons["dir"])
-            self._append_name(output, node, style)
-            output.append(icons["dir_suffix"], style=style)
+            line.append(icons["open"] if node.is_expanded else icons["closed"], style=style)
+            line.append(icons["dir_open"] if node.is_expanded else icons["dir"])
+            self._append_name(line, node, style)
+            line.append(icons["dir_suffix"], style=style)
             if node.is_expanded and node.note:
-                output.append("  " + self._note_text(node.note, node.detail), style=self.styles["note"])
+                line.append("  " + self._note_text(node.note, node.detail), style=self.styles["note"])
         else:
-            output.append("  ")
-            output.append(icons["file"])
-            self._append_name(output, node, style)
+            line.append("  ")
+            line.append(icons["file"])
+            self._append_name(line, node, style)
+        return line
 
-    def _append_result_row(self, output: Text, node: TreeNode, style: str):
+    def _result_row(self, node: TreeNode, style: str) -> Text:
         icons = self.icons
-        output.append("    ")
-        output.append(icons["dir"] if node.is_dir else icons["file"])
-        self._append_name(output, node, style)
+        line = Text("  ")
+        line.append(icons["dir"] if node.is_dir else icons["file"])
+        self._append_name(line, node, style)
         if node.is_dir:
-            output.append(icons["dir_suffix"] or ("" if icons["dir"] else os.sep), style=style)
+            line.append(icons["dir_suffix"] or ("" if icons["dir"] else os.sep), style=style)
         base = self.search_base or self.root_dir
         parent = os.path.dirname(node.path)
         if parent != base:
-            output.append("  " + os.path.relpath(parent, base), style=self.styles["path"])
+            line.append("  " + os.path.relpath(parent, base), style=self.styles["path"])
+        return line
 
     def _filter_line(self) -> str:
         t = self.t
@@ -382,212 +391,219 @@ class DirectoryNavigator:
             extras.append(t("filter_truncated", n=DEEP_SEARCH_LIMIT))
         return text + ("  · " + " · ".join(extras) if extras else "")
 
-    def _help_segments(self) -> list[tuple[str, str]]:
+    def _help_groups(self) -> list[list[tuple[str, str]]]:
         mode = self.config.layout.help_bar
         if mode == "hidden":
             return []
         keys = self.config.keys
-        segments = []
-        for name in HELP_COMPACT if mode == "compact" else HELP_FULL:
-            if name == "nav":
-                up, down = keys.get("up", []), keys.get("down", [])
-                if up[:1] == ["up"] and down[:1] == ["down"]:
-                    label = "↑↓"
-                else:
-                    label = "/".join(keymod.display(key) for key in up[:1] + down[:1])
-                if label:
-                    segments.append((label, self.t("help_navigate")))
-                continue
-            bound = [keymod.display(key) for key in keys.get(name, [])]
-            if not bound:
-                continue
-            label = "/".join(bound[:2])
-            if cell_len(label) > 9:
-                label = bound[0]
-            segments.append((label, self.t(f"short_{name}")))
-        return segments
+        groups = []
+        for names in HELP_GROUPS:
+            group = []
+            for name in names:
+                if mode == "compact" and name not in HELP_COMPACT:
+                    continue
+                if name == "nav":
+                    up, down = keys.get("up", []), keys.get("down", [])
+                    if up[:1] == ["up"] and down[:1] == ["down"]:
+                        label = "↑↓"
+                    else:
+                        label = "/".join(keymod.display(key) for key in up[:1] + down[:1])
+                    if label:
+                        group.append((label, self.t("help_navigate")))
+                    continue
+                bound = [keymod.display(key) for key in keys.get(name, [])]
+                if not bound:
+                    continue
+                label = "/".join(bound[:2])
+                if cell_len(label) > 9:
+                    label = bound[0]
+                group.append((label, self.t(f"short_{name}")))
+            if group:
+                groups.append(group)
+        return groups
 
-    def _hint_lines(self, segments: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
-        width = max(20, self.console.width - 1)
-        lines: list[list[tuple[str, str]]] = []
-        current: list[tuple[str, str]] = []
-        used = 2
-        for keys_text, label in segments:
-            size = cell_len(keys_text) + cell_len(label) + 3
-            if current and used + size > width:
+    def _hint_lines(self, groups: list[list[tuple[str, str]]], width: int) -> list[list[list[tuple[str, str]]]]:
+        def size(piece):
+            return sum(cell_len(keys_text) + 1 + cell_len(label) for keys_text, label in piece) + 2 * (len(piece) - 1)
+
+        pieces = []
+        for group in groups:
+            piece = []
+            for segment in group:
+                if piece and size(piece + [segment]) > width:
+                    pieces.append(piece)
+                    piece = []
+                piece.append(segment)
+            pieces.append(piece)
+
+        lines: list[list[list[tuple[str, str]]]] = []
+        current: list[list[tuple[str, str]]] = []
+        used = 0
+        for piece in pieces:
+            needed = size(piece) + (5 if current else 0)
+            if current and used + needed > width:
                 lines.append(current)
-                current, used = [], 2
-            current.append((keys_text, label))
-            used += size
+                current, used, needed = [], 0, size(piece)
+            current.append(piece)
+            used += needed
         if current:
             lines.append(current)
         return lines
 
-    def _append_hints(self, output: Text, segments: list[tuple[str, str]]):
-        for line in self._hint_lines(segments):
-            output.append("  ")
-            for keys_text, label in line:
-                output.append(keys_text, style=self.styles["key"])
-                output.append(f" {label}  ", style=self.styles["hint"])
-            output.append("\n")
+    def _hint_texts(self, groups: list[list[tuple[str, str]]], width: int) -> list[Text]:
+        separator = self.box[5]
+        texts = []
+        for line in self._hint_lines(groups, width):
+            text = Text()
+            for i, piece in enumerate(line):
+                if i:
+                    text.append(f"  {separator}  ", style=self.styles["hint"])
+                for j, (keys_text, label) in enumerate(piece):
+                    if j:
+                        text.append("  ")
+                    text.append(keys_text, style=self.styles["key"])
+                    text.append(f" {label}", style=self.styles["hint"])
+            texts.append(text)
+        return texts
 
-    def _append_create_prompt(self, output: Text):
+    def _message_lines(self, message: tuple[str, str], width: int) -> list[Text]:
+        text, kind = message
+        styled = Text(text, style=self.styles.get(kind, self.styles["message"]))
+        return list(styled.wrap(self.console, width))[:2]
+
+    def _create_prompt_lines(self, width: int) -> list[Text]:
         t, styles = self.t, self.styles
-        output.append("  " + t("new_folder_in", parent=self.create_parent) + "\n", style=styles["path"])
-        output.append("  " + self.icons["dir"])
-        output.append(self.new_folder_name, style=styles["ok"])
-        output.append("█\n", style=styles["ok"])
+        room = width - cell_len(t("new_folder_in", parent=""))
+        lines = [Text(t("new_folder_in", parent=clip_start(self.create_parent, room)), style=styles["path"])]
+        name = Text(self.icons["dir"])
+        name.append(clip_start(self.new_folder_name, width - name.cell_len - 1), style=styles["ok"])
+        name.append("█", style=styles["ok"])
+        lines.append(name)
         if self.create_error:
-            output.append(f"  {self.create_error}\n", style=styles["error"])
-        self._append_hints(output, [("Enter", t("hint_create")), ("Esc", t("hint_cancel"))])
+            lines.append(Text(self.create_error, style=styles["error"]))
+        return lines + self._hint_texts([[("Enter", t("hint_create")), ("Esc", t("hint_cancel"))]], width)
 
-    def render(self, viewport=None) -> Text:
-        if self.mode == "settings" and self.settings is not None:
-            return self.settings.render(viewport)
-        return self._render_tree(viewport)
+    def _tree_footer(self, width: int) -> list[Text]:
+        if self.creating:
+            return self._create_prompt_lines(width)
+        lines = []
+        if self.filter_text:
+            lines.append(Text(self._filter_line(), style=self.styles["filter"]))
+        if self.message:
+            lines += self._message_lines(self.message, width)
+        return lines + self._hint_texts(self._help_groups(), width)
 
-    def _render_tree(self, viewport=None) -> Text:
-        t, styles, icons = self.t, self.styles, self.icons
-        output = Text()
-
-        node = self._selected_node()
-        if self.config.layout.show_path:
-            output.append(f"  {node.path if node is not None else self.root_dir}", style=styles["path"])
-            output.append("\n")
-
+    def _root_line(self) -> Text:
+        icons, styles = self.icons, self.styles
         root_name = os.path.basename(self.root_dir) or self.root_dir
         suffix = icons["dir_suffix"] if not root_name.endswith(os.sep) else ""
-        output.append("  ")
-        output.append(icons["open"], style=styles["root"])
-        output.append(f"{icons['root']}{root_name}{suffix}", style=styles["root"])
+        line = Text(icons["open"], style=styles["root"])
+        line.append(f"{icons['root']}{root_name}{suffix}", style=styles["root"])
         if self.root_note[0]:
-            output.append("  " + self._note_text(*self.root_note), style=styles["note"])
-        output.append("\n")
+            line.append("  " + self._note_text(*self.root_note), style=styles["note"])
+        return line
 
-        if viewport is not None:
-            view_start, view_end = viewport
-        else:
-            view_start, view_end = 0, len(self.filtered_list)
+    def _tree_screen(self, width: int, height: int) -> tuple[str, list[Text], list[Text]]:
+        t, styles = self.t, self.styles
+        footer = self._tree_footer(width)
+        total = len(self.filtered_list)
+        window = compute_window(total, self.selected_index, list_rows(height, 1, footer))
+        start, end = window if window is not None else (0, total)
+        self._page_rows = end - start
 
-        if view_start > 0:
-            output.append("    " + t("more_above", n=view_start) + "\n", style=styles["info"])
-
+        body = [self._root_line()]
+        if start > 0:
+            body.append(Text("  " + t("more_above", n=start), style=styles["info"]))
         if self.filter_text and not self.filtered_list:
-            output.append("    " + t("no_matches") + "\n", style=styles["info"])
+            body.append(Text("  " + t("no_matches"), style=styles["info"]))
+        for i in range(start, end):
+            node = self.filtered_list[i]
+            style = styles["selected"] if i == self.selected_index else styles["folder" if node.is_dir else "name"]
+            body.append(self._result_row(node, style) if self.filter_text else self._tree_row(node, style))
+        if end < total:
+            body.append(Text("  " + t("more_below", n=total - end), style=styles["info"]))
 
-        for i in range(view_start, view_end):
-            row = self.filtered_list[i]
-            style = styles["selected"] if i == self.selected_index else styles["name"]
-            if self.filter_text:
-                self._append_result_row(output, row, style)
-            else:
-                self._append_tree_row(output, row, style)
-            output.append("\n")
+        title = ""
+        if self.config.layout.show_path:
+            node = self._selected_node()
+            title = node.path if node is not None else self.root_dir
+        return title, body, footer
 
-        remaining = len(self.filtered_list) - view_end
-        if remaining > 0:
-            output.append("    " + t("more_below", n=remaining) + "\n", style=styles["info"])
+    def _too_small_lines(self, width: int, height: int) -> list[Text]:
+        t, styles = self.t, self.styles
+        quit_key = (self.config.keys.get("cancel") or ["ctrl+c"])[0]
+        return centered([
+            Text(t("too_small"), style=styles["error"]),
+            Text(t("too_small_size", min=f"{MIN_WIDTH}×{MIN_HEIGHT}", now=f"{width}×{height}"),
+                 style=styles["info"]),
+            Text(t("too_small_quit", key=keymod.display(quit_key)), style=styles["hint"]),
+        ], width, height)
 
-        output.append("\n")
-        if self.creating:
-            self._append_create_prompt(output)
-            return output
+    def _frame_lines(self, width: int, height: int) -> list[Text]:
+        if width < MIN_WIDTH or height < MIN_HEIGHT:
+            return self._too_small_lines(width, height)
+        if self.mode == "settings" and self.settings is not None:
+            title, body, footer = self.settings.screen(width - 4, height)
+        else:
+            title, body, footer = self._tree_screen(width - 4, height)
+        return boxed(self.box, self.styles, title, body, footer, width, height)
 
-        if self.filter_text:
-            output.append(f"  {self._filter_line()}\n\n", style=styles["filter"])
-        if self.message:
-            text, kind = self.message
-            output.append(f"  {text}\n", style=styles.get(kind, styles["message"]))
-        self._append_hints(output, self._help_segments())
-        return output
-
-    def _chrome_lines(self) -> int:
-        lines = 3 + (1 if self.config.layout.show_path else 0)
-        if self.creating:
-            return lines + 4
-        if self.filter_text:
-            lines += 2
-        if self.message:
-            lines += 1
-        return lines + len(self._hint_lines(self._help_segments()))
-
-    def _get_cursor_y(self) -> int:
-        csbi = _CONSOLE_SCREEN_BUFFER_INFO()
-        _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
-        return csbi.dwCursorPosition.Y
+    def render(self, width: int | None = None, height: int | None = None) -> Text:
+        if width is None or height is None:
+            width, height = self._get_window_size()
+        return Text("\n").join(self._frame_lines(width, height))
 
     def _get_buffer_info(self) -> _CONSOLE_SCREEN_BUFFER_INFO:
         csbi = _CONSOLE_SCREEN_BUFFER_INFO()
         _kernel32.GetConsoleScreenBufferInfo(self._con_handle, ctypes.byref(csbi))
         return csbi
 
-    def _get_visible_height(self) -> int:
-        csbi = self._get_buffer_info()
-        return csbi.srWindow.Bottom - csbi.srWindow.Top + 1
-
-    def _compute_viewport(self, visible_height: int) -> tuple[int, int] | None:
-        if self.mode == "settings" and self.settings is not None:
-            budget = min(visible_height - self.settings.chrome_lines(), max(self.config.layout.max_items, 18))
-            return compute_window(len(self.settings.rows), self.settings.index, budget)
-        budget = min(visible_height - self._chrome_lines(), self.config.layout.max_items)
-        return compute_window(len(self.filtered_list), self.selected_index, budget)
-
-    def clear_previous_render(self):
-        if self._render_start_y is None:
-            return
-        self._con_stream.flush()
-        csbi = self._get_buffer_info()
-        buf_width = csbi.dwSize.X
-        origin = _COORD(0, self._render_start_y)
-        count = buf_width * (self._render_line_count + 1)
-        written = ctypes.c_ulong()
-        _kernel32.FillConsoleOutputCharacterW(
-            self._con_handle, ord(' '), count, origin, ctypes.byref(written))
-        _kernel32.FillConsoleOutputAttribute(
-            self._con_handle, csbi.wAttributes, count, origin, ctypes.byref(written))
-        _kernel32.SetConsoleCursorPosition(self._con_handle, origin)
-
-    def _print_and_track(self, rendered: Text):
-        with self.console.capture() as capture:
-            self.console.print(rendered, end="")
-        raw_output = capture.get()
-        line_count = raw_output.count('\n')
-
-        self._con_stream.write(raw_output)
-        self._con_stream.flush()
-
-        post_y = self._get_cursor_y()
-
-        self._render_start_y = max(0, post_y - line_count)
-        self._render_line_count = line_count
+    def _get_window_size(self) -> tuple[int, int]:
+        window = self._get_buffer_info().srWindow
+        return window.Right - window.Left + 1, window.Bottom - window.Top + 1
 
     def _redraw(self):
-        self.clear_previous_render()
-        viewport = self._compute_viewport(self._get_visible_height())
-        self._print_and_track(self.render(viewport))
+        width, height = self._get_window_size()
+        self._too_small = width < MIN_WIDTH or height < MIN_HEIGHT
+        frame = Text("\n").join(self._frame_lines(width, height))
+        self.console.width = width
+        with self.console.capture() as capture:
+            self.console.print(frame, end="", no_wrap=True, overflow="crop")
+        output = ["\x1b[2J"] if (width, height) != self._drawn_size else []
+        self._drawn_size = (width, height)
+        for row, line in enumerate(capture.get().split("\n"), 1):
+            output.append(f"\x1b[{row};1H{line}")
+        self._con_stream.write("".join(output))
+        self._con_stream.flush()
 
     def run(self):
         reader = None
         if self._read_key is None:
             reader = keymod.ConsoleKeyReader()
             self._read_key = reader
+        self._con_stream.write(_ENTER_SCREEN)
+        self._drawn_size = None
         try:
             while True:
                 self._redraw()
                 result = self._handle_key(self._read_key())
                 if result is not _CONTINUE:
-                    self.clear_previous_render()
                     return result
         except KeyboardInterrupt:
-            self.clear_previous_render()
             return None
         finally:
+            self._con_stream.write(_LEAVE_SCREEN)
+            self._con_stream.flush()
             if reader is not None:
                 reader.close()
                 self._read_key = None
 
     def _handle_key(self, key):
         if key is None or key == "resize":
+            return _CONTINUE
+        if self._too_small:
+            if key == "ctrl+c" or self.keymap.get(key) in ("cancel", "quit"):
+                return None
             return _CONTINUE
         if self.mode == "settings" and self.settings is not None:
             outcome = self.settings.handle(key)
@@ -680,7 +696,7 @@ class DirectoryNavigator:
         return _CONTINUE
 
     def _page_size(self) -> int:
-        return max(1, self.config.layout.max_items - 2)
+        return max(1, self._page_rows - 1)
 
     def _move(self, delta: int, wrap: bool):
         total = len(self.filtered_list)

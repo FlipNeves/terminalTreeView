@@ -1,4 +1,5 @@
 import pytest
+from rich.cells import cell_len
 
 from terminaltreeview.config import Config, load
 
@@ -46,10 +47,10 @@ def test_changing_scope_applies_and_saves(settings_nav):
 
 
 def test_numbers_are_clamped(settings_nav):
-    screen = select(settings_nav, "option", "layout.max_items")
+    screen = select(settings_nav, "option", "search.max_depth")
     for _ in range(60):
         screen.handle("right")
-    assert settings_nav.config.layout.max_items == 50
+    assert settings_nav.config.search.max_depth == 20
 
 
 def test_toggling_hidden_items_rebuilds_the_tree(tmp_path, settings_nav):
@@ -150,6 +151,16 @@ def test_navigation_skips_section_headers(settings_nav):
 
 
 def test_settings_viewport_keeps_selection_visible(settings_nav):
-    screen = select(settings_nav, "key", "quit")
-    start, end = settings_nav._compute_viewport(20)
-    assert start <= screen.index < end
+    select(settings_nav, "key", "refresh")
+    lines = str(settings_nav.render(60, 16)).split("\n")
+    assert len(lines) == 16 and all(cell_len(line) == 60 for line in lines)
+    assert any("› Refresh the list" in line for line in lines)
+    assert lines[0].startswith("╭─ ⚙ Settings")
+
+
+def test_settings_fill_the_minimum_window(settings_nav):
+    for kind, ref in (("option", "search.scope"), ("key", "open"), ("reset", None)):
+        select(settings_nav, kind, ref)
+        lines = str(settings_nav.render(50, 14)).split("\n")
+        assert len(lines) == 14 and all(cell_len(line) == 50 for line in lines)
+        assert any("›" in line for line in lines)

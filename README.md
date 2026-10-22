@@ -10,7 +10,7 @@
 
 ## Features
 
-- **Visual Tree View**: Navigate your folders with a clean, indented structure drawn right under your prompt. It disappears when you leave.
+- **Visual Tree View**: Navigate your folders inside a clean, rounded box that fills the terminal window and follows its size. When you leave, your terminal comes back exactly as it was.
 - **Magic CD**: Leave the tree and your terminal is already in the folder you picked (PowerShell 7, Windows PowerShell 5.1 and CMD).
 - **Type to Search**: Fuzzy, accent-insensitive search (`relatorios` finds `Relatórios`). Search everything on screen, only inside the selected folder, or also inside closed subfolders.
 - **Settings Screen**: Press `F2` to choose how the search works, which key does each action, and how the tree looks. Everything is saved to a plain, commented config file.
@@ -121,10 +121,9 @@ show_hidden = false
 dirs_only = false
 
 [layout]
-max_items = 20
 icons = "emoji"       # "emoji", "ascii" or "none"
 help_bar = "compact"  # "full", "compact" or "hidden"
-theme = "default"     # "default", "classic" or "mono"
+theme = "default"     # "default", "vivid", "classic" or "mono"
 language = "auto"     # "auto", "pt" or "en"
 
 [keys]
@@ -143,6 +142,7 @@ Letters and digits alone are reserved for typing the search, and `Ctrl + C` alwa
 
 - **OS**: Windows 10 or later (uses the Win32 console API for drawing and key handling).
 - **Python**: 3.10 or higher.
+- **Window**: at least 50×14 characters. `ttv` shows a notice when the window is smaller.
 
 ---
 

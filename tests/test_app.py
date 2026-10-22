@@ -3,11 +3,13 @@ import io
 import os
 
 import pytest
+from rich.cells import cell_len
 from rich.text import Text
 
 from terminaltreeview import app as app_module
 from terminaltreeview import fs
-from terminaltreeview.app import STYLES, DirectoryNavigator, compute_window
+from terminaltreeview.app import STYLES, DirectoryNavigator, clip_start, compute_window
+from terminaltreeview.config import STYLE_NAMES, THEMES
 from terminaltreeview.i18n import Translator
 
 FILE_ATTRIBUTE_HIDDEN = 0x2
@@ -103,6 +105,7 @@ def test_ascii_icons(tmp_path, make_nav):
     rendered = str(make_nav(tmp_path, layout__icons="ascii").render())
     assert "+ folder\\" in rendered
     assert "📁" not in rendered and "📄" not in rendered
+    assert "│" not in rendered and "╭" not in rendered and "|" in rendered
 
 
 def test_show_path_can_be_disabled(tmp_path, make_nav):
@@ -111,8 +114,35 @@ def test_show_path_can_be_disabled(tmp_path, make_nav):
     assert str(tmp_path / "alpha") not in rendered
 
 
-def test_default_theme_does_not_force_white_text():
-    assert all("white" not in style for style in STYLES["default"].values())
+def test_default_theme_only_forces_white_on_folder_names():
+    assert "white" in STYLES["default"]["folder"]
+    assert all("white" not in style for name, style in STYLES["default"].items() if name != "folder")
+
+
+def test_every_theme_styles_every_element():
+    for theme in THEMES:
+        assert set(STYLES[theme]) == set(STYLE_NAMES)
+
+
+def test_folders_have_their_own_color_and_selection_only_colors_the_text(tmp_path, make_nav):
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "notes.txt").touch()
+    nav = make_nav(tmp_path)
+    lines = nav._frame_lines(60, 20)[1:]
+    selected = next(line for line in lines if "alpha" in line.plain)
+    marked = "".join(selected.plain[span.start:span.end] for span in selected.spans
+                     if span.style == nav.styles["selected"])
+    assert marked.strip() == "▶ alpha"
+
+    nav.selected_index = 1
+    lines = nav._frame_lines(60, 20)[1:]
+    folder = next(line for line in lines if "alpha" in line.plain)
+    assert any(span.style == nav.styles["folder"] for span in folder.spans)
+    assert all(span.style != nav.styles["selected"] for span in folder.spans)
+    unstyled = next(line for line in lines if "notes.txt" in line.plain and "📄" in line.plain)
+    assert unstyled.style == ""
+    assert all(set(unstyled.plain[span.start:span.end]) <= {"│", " "} for span in unstyled.spans
+               if span.style == nav.styles["border"])
 
 
 def test_expand_directory(tmp_path, make_nav):
@@ -249,70 +279,51 @@ def test_page_home_and_end_keys(tmp_path, make_nav):
     nav.run()
     assert nav.selected_index == 29
 
-    nav = make_nav(tmp_path, keys=["pagedown", "pagedown", "ctrl+c"])
+    nav = make_nav(tmp_path, keys=["pagedown", "ctrl+c"])
+    nav._get_window_size = lambda: (80, 14)
+    nav.render()
+    first_page = nav._page_rows
     nav.run()
-    assert nav.selected_index == 2 * nav._page_size()
+    assert 1 < first_page < 30
+    assert nav.selected_index == first_page - 1
 
     nav = make_nav(tmp_path, keys=["end", "home", "ctrl+c"])
     nav.run()
     assert nav.selected_index == 0
 
 
-def test_viewport_shows_all_when_fits(tmp_path, make_nav):
+def test_list_shows_everything_when_it_fits(tmp_path, make_nav):
     for i in range(5):
         (tmp_path / f"dir_{i}").mkdir()
-    nav = make_nav(tmp_path)
-    assert nav._compute_viewport(30) is None
-    assert "more..." not in str(nav.render())
+    rendered = str(make_nav(tmp_path).render(80, 30))
+    assert "more..." not in rendered
+    assert all(f"dir_{i}" in rendered for i in range(5))
 
 
-def test_viewport_limits_output(tmp_path, make_nav):
+def test_list_scrolls_with_the_selection(tmp_path, make_nav):
     for i in range(30):
         (tmp_path / f"dir_{i:02d}").mkdir()
-    nav = make_nav(tmp_path)
-    nav.selected_index = 0
-    viewport = nav._compute_viewport(10)
-    assert viewport is not None
-    start, end = viewport
-    assert end - start < 30
-    assert start <= nav.selected_index < end
-
-
-def test_viewport_scroll_indicators(tmp_path, make_nav):
-    for i in range(30):
-        (tmp_path / f"dir_{i:02d}").mkdir()
-    nav = make_nav(tmp_path)
-    nav.selected_index = 15
-    viewport = nav._compute_viewport(10)
-    assert viewport is not None
-    rendered = str(nav.render(viewport))
-    assert "↑" in rendered
-    assert "↓" in rendered
-    assert "more..." in rendered
-
-
-def test_viewport_follows_selection(tmp_path, make_nav):
-    for i in range(30):
-        (tmp_path / f"dir_{i:02d}").mkdir()
-    nav = make_nav(tmp_path)
+    nav = make_nav(tmp_path, layout__show_path=False)
     nav.selected_index = 2
-    vp_top = nav._compute_viewport(10)
-    assert vp_top is not None
-    assert vp_top[0] <= 2 < vp_top[1]
+    top = str(nav.render(80, 14))
+    assert "dir_02" in top and "dir_28" not in top
+    assert top.count("more...") == 1
+    nav.selected_index = 15
+    middle = str(nav.render(80, 14))
+    assert "dir_15" in middle and middle.count("more...") == 2
     nav.selected_index = 28
-    vp_bottom = nav._compute_viewport(10)
-    assert vp_bottom is not None
-    assert vp_bottom[0] <= 28 < vp_bottom[1]
-    assert vp_top[0] != vp_bottom[0]
+    bottom = str(nav.render(80, 14))
+    assert "dir_28" in bottom and "dir_02" not in bottom
+    assert bottom.count("more...") == 1
 
 
-def test_max_items_option_controls_viewport(tmp_path, make_nav):
+def test_list_grows_with_the_window(tmp_path, make_nav):
     for i in range(30):
         (tmp_path / f"dir_{i:02d}").mkdir()
-    nav = make_nav(tmp_path, layout__max_items=20)
-    start, end = nav._compute_viewport(100)
-    assert end - start + (start > 0) + (end < 30) <= 20
-    assert end - start > 12
+    nav = make_nav(tmp_path, layout__show_path=False)
+    small = str(nav.render(80, 14)).count("dir_")
+    large = str(nav.render(80, 30)).count("dir_")
+    assert 1 < small < large
 
 
 def test_compute_window_invariants():
@@ -328,11 +339,76 @@ def test_compute_window_invariants():
                 assert (end - start) + (start > 0) + (end < total) <= budget
 
 
-def test_get_visible_height(tmp_path, make_nav):
+def test_get_window_size(tmp_path, make_nav):
     nav = make_nav(tmp_path)
-    height = nav._get_visible_height()
-    assert isinstance(height, int)
-    assert height > 0
+    width, height = DirectoryNavigator._get_window_size(nav)
+    assert width > 0 and height > 0
+
+
+def test_clip_start_keeps_the_end_of_the_path():
+    assert clip_start("C:\\short", 20) == "C:\\short"
+    clipped = clip_start("C:\\Users\\someone\\projects\\deep\\folder", 20)
+    assert clipped.startswith("…") and clipped.endswith("\\deep\\folder")
+    assert cell_len(clipped) == 20
+    assert cell_len(clip_start("C:\\日本語\\日本語\\日本語", 9)) <= 9
+
+
+def test_long_path_is_clipped_in_the_top_border(tmp_path, make_nav):
+    (tmp_path / ("a" * 80)).mkdir()
+    top = str(make_nav(tmp_path).render(60, 20)).split("\n")[0]
+    assert cell_len(top) == 60
+    assert top.startswith("╭─ …") and top.endswith(" ─╮")
+    assert "a" * 20 in top
+
+
+def frame(nav, width, height):
+    return str(nav.render(width, height)).split("\n")
+
+
+def assert_fills(lines, width, height):
+    assert len(lines) == height
+    assert all(cell_len(line) == width for line in lines)
+
+
+@pytest.mark.parametrize("width, height", [(50, 14), (64, 20), (120, 40)])
+def test_frame_fills_the_window_exactly(tmp_path, make_nav, width, height):
+    for i in range(30):
+        (tmp_path / f"folder_with_a_name_longer_than_the_window_{i:02d}").mkdir()
+    nav = make_nav(tmp_path)
+    nav.selected_index = 12
+    nav.message = ("a long message that will not fit on a single line " * 4, "info")
+    lines = frame(nav, width, height)
+    assert_fills(lines, width, height)
+    assert lines[0].startswith("╭─") and lines[-1].startswith("╰─") and lines[-1].endswith("╯")
+    assert any("folder_with_a_name" in line for line in lines[1:])
+
+
+def test_frame_fills_the_window_while_searching_and_creating(tmp_path, make_nav):
+    for i in range(30):
+        (tmp_path / f"dir_{i:02d}").mkdir()
+    nav = make_nav(tmp_path)
+    nav._type("d")
+    assert_fills(frame(nav, 50, 14), 50, 14)
+    nav._end_search()
+    nav._begin_create()
+    nav.new_folder_name = "x" * 80
+    lines = frame(nav, 50, 14)
+    assert_fills(lines, 50, 14)
+    assert any(line.rstrip(" │").endswith("x█") for line in lines)
+
+
+def test_too_small_window_shows_a_notice_and_only_quits(tmp_path, make_nav):
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+    nav = make_nav(tmp_path, keys=["down", "a", "ctrl+n", "f2", "esc"])
+    nav._get_window_size = lambda: (40, 10)
+    assert nav.run() is None
+    assert nav.selected_index == 0 and nav.filter_text == ""
+    assert not nav.creating and nav.mode == "tree"
+    lines = frame(nav, 40, 10)
+    assert_fills(lines, 40, 10)
+    text = "\n".join(lines)
+    assert "Window too small" in text and "50×14" in text and "40×10" in text
 
 
 def test_dynamic_breadcrumb_shows_selected_path(tmp_path, make_nav):
@@ -351,6 +427,34 @@ def test_help_bar_is_rendered(tmp_path, make_nav):
     for text in ("Navigate", "Expand", "Enter/→", "Ctrl+Enter", "Go Here", "Shift+Enter",
                  "Go Inside", "Ctrl+O", "Open", "F2", "Settings", "Quit/Clear"):
         assert text in rendered
+
+
+def hint_lines(nav, width):
+    return [text.plain for text in nav._hint_texts(nav._help_groups(), width)]
+
+
+def test_help_bar_follows_the_group_order_on_one_line(tmp_path, make_nav):
+    lines = hint_lines(make_nav(tmp_path), 196)
+    assert len(lines) == 1
+    order = ["Navigate", "Expand", "Back", "Go Here", "Go Inside", "Open", "New Folder", "Hidden", "Settings",
+             "Quit/Clear"]
+    positions = [lines[0].index(label) for label in order]
+    assert positions == sorted(positions)
+    assert lines[0].count("│") == 3
+
+
+def test_help_bar_breaks_lines_between_groups(tmp_path, make_nav):
+    lines = hint_lines(make_nav(tmp_path), 46)
+
+    def line_of(label):
+        return next(i for i, line in enumerate(lines) if label in line)
+
+    assert line_of("Navigate") == line_of("Expand") == line_of("Back")
+    assert line_of("Go Here") == line_of("Go Inside")
+    assert line_of("Open") == line_of("New Folder")
+    assert line_of("Hidden") == line_of("Settings") == line_of("Quit/Clear")
+    assert line_of("Navigate") < line_of("Go Here") < line_of("Open") < line_of("Hidden")
+    assert all(cell_len(line) <= 46 for line in lines)
 
 
 def test_help_bar_uses_configured_keys(tmp_path, make_nav):

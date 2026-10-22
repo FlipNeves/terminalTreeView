@@ -17,7 +17,6 @@ def test_defaults():
     config = Config()
     assert config.search.scope == "screen"
     assert config.search.recursive is False
-    assert config.layout.max_items == 12
     assert config.keys["go_inside"] == ["shift+enter"]
     assert config.keymap()["f2"] == "settings"
 
@@ -67,7 +66,6 @@ language = "pt"
     assert config.search.match == "prefix"
     assert config.search.skip == ["build"]
     assert config.files.show_hidden is True
-    assert config.layout.max_items == 20
     assert config.layout.icons == "ascii"
     assert config.layout.help_bar == "compact"
     assert config.layout.theme == "mono"
@@ -91,9 +89,8 @@ x = 1
     config = load(path)
     assert config.search.scope == "screen"
     assert config.search.max_depth == 5
-    assert config.layout.max_items == 12
     assert config.layout.show_path is True
-    assert codes(config).count("warn_invalid") == 4
+    assert codes(config).count("warn_invalid") == 3
     assert codes(config).count("warn_unknown") == 2
 
 
@@ -160,7 +157,7 @@ def test_save_round_trip(tmp_path):
     config = Config(path=str(tmp_path / "sub" / "config.toml"))
     config.search.scope = "folder"
     config.search.recursive = True
-    config.layout.max_items = 30
+    config.search.max_depth = 7
     config.layout.language = "en"
     config.keys["open"] = ["f9", "ctrl+o"]
     config.colors = {"selected": "bold magenta"}
@@ -170,7 +167,7 @@ def test_save_round_trip(tmp_path):
     assert loaded.warnings == []
     assert loaded.search.scope == "folder"
     assert loaded.search.recursive is True
-    assert loaded.layout.max_items == 30
+    assert loaded.search.max_depth == 7
     assert loaded.keys["open"] == ["f9", "ctrl+o"]
     assert loaded.colors == {"selected": "bold magenta"}
     assert loaded.keys == config.keys
