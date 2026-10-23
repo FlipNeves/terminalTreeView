@@ -10,11 +10,12 @@ def test_project_structure():
     assert (root / "tests").is_dir()
 
 def test_dependencies_configured():
-    """Verify that readchar and rich are in pyproject.toml."""
+    """Verify that rich and tomli are in pyproject.toml."""
     root = pathlib.Path(__file__).parent.parent
     pyproject = root / "pyproject.toml"
     assert pyproject.exists()
     content = pyproject.read_text()
-    assert "readchar" in content
     assert "rich" in content
+    assert "tomli" in content
+    assert "readchar" not in content
     assert "pytest" in content
