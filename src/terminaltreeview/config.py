@@ -16,6 +16,7 @@ MATCH_MODES = ("fuzzy", "contains", "prefix")
 ICON_SETS = ("emoji", "ascii", "none")
 HELP_BARS = ("full", "compact", "hidden")
 THEMES = ("default", "vivid", "classic", "mono")
+FOLDER_COLORS = ("theme", "files", "white", "blue", "cyan", "green", "yellow", "magenta")
 LANGUAGE_CHOICES = ("auto", "pt", "en")
 
 ACTIONS = (
@@ -82,14 +83,16 @@ OPTIONS = (
     Option("search", "match", "choice", MATCH_MODES),
     Option("files", "show_hidden", "bool"),
     Option("files", "dirs_only", "bool"),
+    Option("layout", "fullscreen", "bool"),
+    Option("layout", "max_items", "int", low=3, high=50),
     Option("layout", "icons", "choice", ICON_SETS),
     Option("layout", "help_bar", "choice", HELP_BARS),
     Option("layout", "show_path", "bool"),
     Option("layout", "theme", "choice", THEMES),
+    Option("layout", "folder_color", "choice", FOLDER_COLORS),
     Option("layout", "language", "choice", LANGUAGE_CHOICES),
 )
 OPTION_BY_ID = {option.id: option for option in OPTIONS}
-RETIRED_OPTIONS = frozenset({"layout.max_items"})
 SECTIONS = ("search", "files", "layout")
 
 
@@ -110,10 +113,13 @@ class FileSettings:
 
 @dataclass
 class LayoutSettings:
+    fullscreen: bool = True
+    max_items: int = 12
     icons: str = "emoji"
     help_bar: str = "full"
     show_path: bool = True
     theme: str = "default"
+    folder_color: str = "theme"
     language: str = "auto"
 
 
@@ -202,8 +208,7 @@ def _apply(config: Config, data: dict):
                 continue
             option = OPTION_BY_ID.get(f"{section}.{name}")
             if option is None:
-                if f"{section}.{name}" not in RETIRED_OPTIONS:
-                    warnings.append(("warn_unknown", {"name": f"{section}.{name}"}))
+                warnings.append(("warn_unknown", {"name": f"{section}.{name}"}))
             elif option.accepts(value):
                 config.set(option.id, value)
             else:

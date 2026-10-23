@@ -30,7 +30,7 @@ def test_f2_opens_settings_and_esc_returns(tmp_path, make_nav):
 
 
 def test_settings_screen_lists_sections_options_and_keys(settings_nav):
-    rendered = str(settings_nav.render())
+    rendered = str(settings_nav.render(200, 80))
     for text in ("Settings", "SEARCH", "FILES", "LAYOUT", "KEYS", "Search in", "Everything on screen",
                  "Open with the default app", "Ctrl+O", "Restore all defaults"):
         assert text in rendered

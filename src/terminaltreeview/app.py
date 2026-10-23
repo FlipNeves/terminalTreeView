@@ -24,8 +24,10 @@ from terminaltreeview.settings_screen import SettingsScreen
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 _kernel32 = ctypes.windll.kernel32
 
-_ENTER_SCREEN = "\x1b[?1049h\x1b[?25l\x1b[?7l"
-_LEAVE_SCREEN = "\x1b[?7h\x1b[?25h\x1b[?1049l"
+_START_DRAWING = "\x1b[?25l\x1b[?7l"
+_STOP_DRAWING = "\x1b[?7h\x1b[?25h"
+_ALT_SCREEN_ON = "\x1b[?1049h"
+_ALT_SCREEN_OFF = "\x1b[?1049l"
 
 DEEP_SEARCH_LIMIT = 20000
 
@@ -79,11 +81,20 @@ HELP_GROUPS = (
 )
 HELP_COMPACT = frozenset({"nav", "expand", "go_inside", "settings", "cancel"})
 
+FOLDER_STYLES = {
+    "white": "bold bright_white", "blue": "bold bright_blue", "cyan": "bold bright_cyan",
+    "green": "bold bright_green", "yellow": "bold bright_yellow", "magenta": "bold bright_magenta",
+}
+
 _CONTINUE = object()
 
 
-def build_styles(theme: str, overrides: dict) -> dict:
+def build_styles(theme: str, overrides: dict, folder_color: str = "theme") -> dict:
     styles = dict(STYLES.get(theme, STYLES["default"]))
+    if folder_color == "files":
+        styles["folder"] = styles["name"]
+    elif folder_color in FOLDER_STYLES:
+        styles["folder"] = FOLDER_STYLES[folder_color]
     styles.update(overrides)
     return styles
 
@@ -172,10 +183,13 @@ class DirectoryNavigator:
         self._page_rows = 10
         self._too_small = False
         self._drawn_size: tuple[int, int] | None = None
+        self._drawing: str | None = None
+        self._inline_rows = 0
 
     def apply_config(self, changed: str | None = None):
         self.t = Translator(self.config.layout.language)
-        self.styles = build_styles(self.config.layout.theme, self.config.colors)
+        layout = self.config.layout
+        self.styles = build_styles(layout.theme, self.config.colors, layout.folder_color)
         self.icons = ICONS.get(self.config.layout.icons, ICONS["emoji"])
         self.box = BOXES["ascii" if self.config.layout.icons == "ascii" else "rounded"]
         self.keymap = self.config.keymap()
@@ -507,7 +521,7 @@ class DirectoryNavigator:
         t, styles = self.t, self.styles
         footer = self._tree_footer(width)
         total = len(self.filtered_list)
-        window = compute_window(total, self.selected_index, list_rows(height, 1, footer))
+        window = compute_window(total, self.selected_index, self._visible_rows(list_rows(height, 1, footer)))
         start, end = window if window is not None else (0, total)
         self._page_rows = end - start
 
@@ -529,7 +543,12 @@ class DirectoryNavigator:
             title = node.path if node is not None else self.root_dir
         return title, body, footer
 
-    def _too_small_lines(self, width: int, height: int) -> list[Text]:
+    def _visible_rows(self, rows: int, at_least: int = 0) -> int:
+        if self.config.layout.fullscreen:
+            return rows
+        return min(rows, max(self.config.layout.max_items, at_least))
+
+    def _too_small_lines(self, width: int, height: int, rows: int) -> list[Text]:
         t, styles = self.t, self.styles
         quit_key = (self.config.keys.get("cancel") or ["ctrl+c"])[0]
         return centered([
@@ -537,16 +556,20 @@ class DirectoryNavigator:
             Text(t("too_small_size", min=f"{MIN_WIDTH}×{MIN_HEIGHT}", now=f"{width}×{height}"),
                  style=styles["info"]),
             Text(t("too_small_quit", key=keymod.display(quit_key)), style=styles["hint"]),
-        ], width, height)
+        ], width, rows)
 
     def _frame_lines(self, width: int, height: int) -> list[Text]:
+        inline = not self.config.layout.fullscreen
+        rows = height - 1 if inline else height
         if width < MIN_WIDTH or height < MIN_HEIGHT:
-            return self._too_small_lines(width, height)
+            return self._too_small_lines(width, height, max(1, min(rows, 3)) if inline else rows)
         if self.mode == "settings" and self.settings is not None:
-            title, body, footer = self.settings.screen(width - 4, height)
+            title, body, footer = self.settings.screen(width - 4, rows)
         else:
-            title, body, footer = self._tree_screen(width - 4, height)
-        return boxed(self.box, self.styles, title, body, footer, width, height)
+            title, body, footer = self._tree_screen(width - 4, rows)
+        if inline:
+            rows = min(rows, 2 + len(body) + (1 + len(footer) if footer else 0))
+        return boxed(self.box, self.styles, title, body, footer, width, rows)
 
     def render(self, width: int | None = None, height: int | None = None) -> Text:
         if width is None or height is None:
@@ -562,17 +585,48 @@ class DirectoryNavigator:
         window = self._get_buffer_info().srWindow
         return window.Right - window.Left + 1, window.Bottom - window.Top + 1
 
+    def _rewind_inline(self) -> str:
+        if not self._inline_rows:
+            return ""
+        up = f"\x1b[{self._inline_rows - 1}A" if self._inline_rows > 1 else ""
+        return f"\r{up}\x1b[J"
+
+    def _stop_mode(self) -> str:
+        if self._drawing == "inline":
+            output = self._rewind_inline()
+        elif self._drawing == "full":
+            output = _ALT_SCREEN_OFF
+        else:
+            output = ""
+        self._drawing, self._inline_rows, self._drawn_size = None, 0, None
+        return output
+
     def _redraw(self):
         width, height = self._get_window_size()
         self._too_small = width < MIN_WIDTH or height < MIN_HEIGHT
+        mode = "full" if self.config.layout.fullscreen else "inline"
+        output = []
+        if self._drawing != mode:
+            output.append(self._stop_mode())
+            if mode == "full":
+                output.append(_ALT_SCREEN_ON)
+            self._drawing = mode
+
         frame = Text("\n").join(self._frame_lines(width, height))
         self.console.width = width
         with self.console.capture() as capture:
             self.console.print(frame, end="", no_wrap=True, overflow="crop")
-        output = ["\x1b[2J"] if (width, height) != self._drawn_size else []
-        self._drawn_size = (width, height)
-        for row, line in enumerate(capture.get().split("\n"), 1):
-            output.append(f"\x1b[{row};1H{line}")
+        lines = capture.get().split("\n")
+
+        if mode == "full":
+            if (width, height) != self._drawn_size:
+                output.append("\x1b[2J")
+                self._drawn_size = (width, height)
+            output.extend(f"\x1b[{row};1H{line}" for row, line in enumerate(lines, 1))
+        else:
+            output.append(self._rewind_inline())
+            output.append("\r\n".join(lines))
+            self._inline_rows = len(lines)
         self._con_stream.write("".join(output))
         self._con_stream.flush()
 
@@ -581,8 +635,7 @@ class DirectoryNavigator:
         if self._read_key is None:
             reader = keymod.ConsoleKeyReader()
             self._read_key = reader
-        self._con_stream.write(_ENTER_SCREEN)
-        self._drawn_size = None
+        self._con_stream.write(_START_DRAWING)
         try:
             while True:
                 self._redraw()
@@ -592,7 +645,7 @@ class DirectoryNavigator:
         except KeyboardInterrupt:
             return None
         finally:
-            self._con_stream.write(_LEAVE_SCREEN)
+            self._con_stream.write(self._stop_mode() + _STOP_DRAWING)
             self._con_stream.flush()
             if reader is not None:
                 reader.close()

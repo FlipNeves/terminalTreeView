@@ -10,7 +10,7 @@
 
 ## Features
 
-- **Visual Tree View**: Navigate your folders inside a clean, rounded box that fills the terminal window and follows its size. When you leave, your terminal comes back exactly as it was.
+- **Visual Tree View**: Navigate your folders inside a clean, rounded box that fills the terminal window and follows its size. When you leave, your terminal comes back exactly as it was. Prefer it right below your prompt? Turn off `Full screen` in the settings.
 - **Magic CD**: Leave the tree and your terminal is already in the folder you picked (PowerShell 7, Windows PowerShell 5.1 and CMD).
 - **Type to Search**: Fuzzy, accent-insensitive search (`relatorios` finds `Relatórios`). Search everything on screen, only inside the selected folder, or also inside closed subfolders.
 - **Settings Screen**: Press `F2` to choose how the search works, which key does each action, and how the tree looks. Everything is saved to a plain, commented config file.
@@ -121,9 +121,12 @@ show_hidden = false
 dirs_only = false
 
 [layout]
+fullscreen = true     # false draws the box right below the prompt
+max_items = 12        # list size when fullscreen = false
 icons = "emoji"       # "emoji", "ascii" or "none"
 help_bar = "compact"  # "full", "compact" or "hidden"
 theme = "default"     # "default", "vivid", "classic" or "mono"
+folder_color = "theme"  # "theme", "files", "white", "blue", "cyan", "green", "yellow" or "magenta"
 language = "auto"     # "auto", "pt" or "en"
 
 [keys]

@@ -8,7 +8,7 @@ from rich.text import Text
 
 from terminaltreeview import app as app_module
 from terminaltreeview import fs
-from terminaltreeview.app import STYLES, DirectoryNavigator, clip_start, compute_window
+from terminaltreeview.app import STYLES, DirectoryNavigator, build_styles, clip_start, compute_window
 from terminaltreeview.config import STYLE_NAMES, THEMES
 from terminaltreeview.i18n import Translator
 
@@ -395,6 +395,63 @@ def test_frame_fills_the_window_while_searching_and_creating(tmp_path, make_nav)
     lines = frame(nav, 50, 14)
     assert_fills(lines, 50, 14)
     assert any(line.rstrip(" │").endswith("x█") for line in lines)
+
+
+def test_folder_color_option(tmp_path, make_nav):
+    assert build_styles("default", {}, "theme")["folder"] == STYLES["default"]["folder"]
+    assert build_styles("default", {}, "green")["folder"] == "bold bright_green"
+    assert build_styles("classic", {}, "files")["folder"] == STYLES["classic"]["name"]
+    assert build_styles("default", {"folder": "red"}, "green")["folder"] == "red"
+    assert make_nav(tmp_path, layout__folder_color="cyan").styles["folder"] == "bold bright_cyan"
+
+
+def test_inline_frame_is_as_tall_as_its_content(tmp_path, make_nav):
+    for i in range(5):
+        (tmp_path / f"dir_{i}").mkdir()
+    nav = make_nav(tmp_path, layout__fullscreen=False)
+    lines = frame(nav, 80, 40)
+    assert len(lines) == 2 + 1 + 5 + 1 + len(nav._tree_footer(76))
+    assert all(cell_len(line) == 80 for line in lines)
+
+
+def test_inline_list_is_limited_by_max_items_and_the_window(tmp_path, make_nav):
+    for i in range(30):
+        (tmp_path / f"dir_{i:02d}").mkdir()
+    nav = make_nav(tmp_path, layout__fullscreen=False, layout__max_items=8, layout__show_path=False)
+    lines = frame(nav, 80, 40)
+    assert 1 < sum("dir_" in line for line in lines) <= 8
+    assert len(lines) < 20
+    assert len(frame(nav, 80, 14)) <= 13
+
+
+def test_switching_between_full_screen_and_inline_drawing(tmp_path, make_nav):
+    (tmp_path / "alpha").mkdir()
+    nav = make_nav(tmp_path)
+    nav._con_stream = io.StringIO()
+    nav._redraw()
+    assert nav._con_stream.getvalue().startswith("\x1b[?1049h\x1b[2J")
+
+    nav.config.layout.fullscreen = False
+    nav._con_stream = io.StringIO()
+    nav._redraw()
+    output = nav._con_stream.getvalue()
+    rows = nav._inline_rows
+    assert output.startswith("\x1b[?1049l") and output.count("\r\n") == rows - 1
+
+    nav._con_stream = io.StringIO()
+    nav._redraw()
+    assert nav._con_stream.getvalue().startswith(f"\r\x1b[{rows - 1}A\x1b[J")
+    assert nav._stop_mode() == f"\r\x1b[{rows - 1}A\x1b[J"
+
+
+def test_inline_mode_never_uses_the_alternate_screen(tmp_path, make_nav):
+    (tmp_path / "alpha").mkdir()
+    nav = make_nav(tmp_path, keys=["down", "shift+enter"], layout__fullscreen=False)
+    nav._con_stream = io.StringIO()
+    assert nav.run() == str(tmp_path / "alpha")
+    output = nav._con_stream.getvalue()
+    assert "\x1b[?1049" not in output
+    assert output.endswith("\x1b[J\x1b[?7h\x1b[?25h")
 
 
 def test_too_small_window_shows_a_notice_and_only_quits(tmp_path, make_nav):

@@ -17,6 +17,9 @@ def test_defaults():
     config = Config()
     assert config.search.scope == "screen"
     assert config.search.recursive is False
+    assert config.layout.fullscreen is True
+    assert config.layout.max_items == 12
+    assert config.layout.folder_color == "theme"
     assert config.keys["go_inside"] == ["shift+enter"]
     assert config.keymap()["f2"] == "settings"
 
@@ -52,10 +55,12 @@ skip = ["build"]
 show_hidden = true
 
 [layout]
+fullscreen = false
 max_items = 20
 icons = "ascii"
 help_bar = "compact"
 theme = "mono"
+folder_color = "green"
 language = "pt"
 """)
     config = load(path)
@@ -66,6 +71,9 @@ language = "pt"
     assert config.search.match == "prefix"
     assert config.search.skip == ["build"]
     assert config.files.show_hidden is True
+    assert config.layout.fullscreen is False
+    assert config.layout.max_items == 20
+    assert config.layout.folder_color == "green"
     assert config.layout.icons == "ascii"
     assert config.layout.help_bar == "compact"
     assert config.layout.theme == "mono"
@@ -89,8 +97,9 @@ x = 1
     config = load(path)
     assert config.search.scope == "screen"
     assert config.search.max_depth == 5
+    assert config.layout.max_items == 12
     assert config.layout.show_path is True
-    assert codes(config).count("warn_invalid") == 3
+    assert codes(config).count("warn_invalid") == 4
     assert codes(config).count("warn_unknown") == 2
 
 

@@ -233,7 +233,8 @@ class SettingsScreen:
         body = []
         if nav.config.path:
             body.append(Text(clip_start(nav.config.path, width), style=styles["path"]))
-        window = compute_window(len(self.rows), self.index, list_rows(height, len(body), footer))
+        rows = nav._visible_rows(list_rows(height, len(body), footer), at_least=18)
+        window = compute_window(len(self.rows), self.index, rows)
         start, end = window if window is not None else (0, len(self.rows))
         if start > 0:
             body.append(Text("  " + t("more_above", n=start), style=styles["info"]))
